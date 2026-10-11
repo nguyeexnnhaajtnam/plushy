@@ -1,0 +1,3455 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Plush Creatures</title>
+<meta name="description" content="Species-driven soft-body plush creature simulator (WebGPU).">
+<style>
+:root {
+  --bg: #d7d1c7;
+  --bg-deep: #cbc4b8;
+  --card: #e6e1d8;
+  --card-2: #ece8e0;
+  --ink: #221f1b;
+  --ink-2: #4b453d;
+  --muted: #7a7266;
+  --line: rgba(34, 31, 27, 0.14);
+  --line-2: rgba(34, 31, 27, 0.08);
+  --accent: #8a5a33;
+  --accent-ink: #fbf7f0;
+  --serif: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Palatino, "Apple Garamond", Georgia, serif;
+  --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, "SF Mono", "Cascadia Mono", Consolas, monospace;
+  --radius: 14px;
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--ink); }
+body { font: 15px/1.5 var(--sans); -webkit-font-smoothing: antialiased; min-height: 100vh; }
+button, input, select { font: inherit; color: inherit; }
+.page { max-width: 1480px; margin: 0 auto; padding: 22px 28px 40px; }
+
+/* masthead */
+.masthead { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
+.brand { font: 600 13px/1 var(--sans); letter-spacing: 0.16em; text-transform: uppercase; }
+.brand em { font: italic 400 15px/1 var(--serif); letter-spacing: 0; text-transform: none; color: var(--muted); margin-left: 8px; }
+.masthead .meta { font: 12px/1 var(--mono); color: var(--muted); }
+
+/* layout */
+.layout { display: grid; grid-template-columns: minmax(0, 1fr) 348px; gap: 28px; margin-top: 22px; align-items: start; }
+.stage { min-width: 0; }
+.title-block { display: grid; grid-template-columns: minmax(0, auto) minmax(0, 1fr); gap: 8px 36px; align-items: end; margin-bottom: 18px; }
+.kicker { grid-column: 1 / -1; margin: 0; font: 600 11.5px/1 var(--sans); letter-spacing: 0.18em; text-transform: uppercase; color: var(--accent); }
+h1 { margin: 0; font-family: var(--serif); font-weight: 400; line-height: 0.86; letter-spacing: -0.02em; }
+h1 .l1 { display: block; font-style: italic; font-size: clamp(30px, 3.6vw, 52px); color: var(--ink-2); margin-left: 0.08em; }
+h1 .l2 { display: block; font-size: clamp(54px, 7.6vw, 116px); }
+.lede { margin: 0 0 6px; max-width: 46ch; font: 17px/1.45 var(--serif); color: var(--ink-2); }
+
+/* viewport */
+.viewport { position: relative; border-radius: var(--radius); overflow: hidden; background: var(--bg-deep);
+  aspect-ratio: 16 / 9.4; min-height: 380px; box-shadow: inset 0 0 0 1px var(--line-2), 0 1px 0 rgba(255,255,255,0.35); }
+.viewport canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; outline: none; }
+.viewport canvas.on-creature { cursor: pointer; }
+.viewport canvas.dragging { cursor: grabbing; }
+.tools { position: absolute; left: 14px; top: 14px; display: flex; gap: 4px; padding: 4px; border-radius: 999px;
+  background: rgba(236, 232, 224, 0.82); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); box-shadow: 0 1px 2px rgba(0,0,0,0.08); }
+.tool { display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 14px 0 11px; border: 0; border-radius: 999px; background: transparent; cursor: pointer; font-size: 13.5px; font-weight: 500; color: var(--ink-2); }
+.tool .g { font-size: 15px; width: 16px; text-align: center; }
+.tool:hover { background: rgba(34,31,27,0.06); }
+.tool[aria-checked="true"] { background: var(--ink); color: var(--card-2); }
+.tool:focus-visible, .btn:focus-visible, .switch:focus-visible, .swatch:focus-visible, .species-opt:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.status { position: absolute; right: 14px; top: 14px; display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 14px;
+  border-radius: 999px; background: rgba(236, 232, 224, 0.82); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); font-size: 13px; color: var(--ink-2); }
+.status .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent); }
+.status.paused .dot { background: var(--muted); box-shadow: none; }
+.hint { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); max-width: calc(100% - 28px); padding: 7px 14px; border-radius: 999px;
+  background: rgba(34, 31, 27, 0.72); color: #f3efe8; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; transition: opacity .25s; }
+.hint:empty { opacity: 0; }
+.overlay { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(215, 209, 199, 0.72); font: italic 22px/1.3 var(--serif); color: var(--ink-2); transition: opacity .3s; }
+.overlay[hidden] { display: grid; opacity: 0; pointer-events: none; }
+.fallback { position: absolute; inset: 0; display: grid; place-items: center; padding: 28px; background: var(--card); }
+.fallback[hidden] { display: none; }
+.fallback .box { max-width: 520px; }
+.fallback h3 { margin: 0 0 8px; font: 400 28px/1.15 var(--serif); }
+.fallback p { margin: 0 0 10px; color: var(--ink-2); }
+.fallback code { font: 12.5px var(--mono); background: rgba(34,31,27,0.06); padding: 2px 6px; border-radius: 6px; }
+
+/* readouts */
+.readouts { display: grid; grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); gap: 0; margin: 16px 0 0; border-top: 1px solid var(--line); }
+.readout { padding: 12px 16px 2px 0; }
+.readout + .readout { padding-left: 16px; border-left: 1px solid var(--line-2); }
+.readout dt { font: 600 10.5px/1 var(--sans); letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+.readout dd { margin: 8px 0 0; font: 400 32px/1 var(--serif); font-variant-numeric: tabular-nums lining-nums; white-space: nowrap; }
+.readout dd small { font: 13px var(--sans); color: var(--muted); margin-left: 4px; }
+.readout.wide dd { font-size: 20px; line-height: 1.25; white-space: normal; }
+.engine-line { margin: 12px 0 0; font: 11.5px/1.5 var(--mono); color: var(--muted); }
+
+/* panel */
+.panel { position: sticky; top: 16px; display: flex; flex-direction: column; gap: 12px; max-height: calc(100vh - 32px); overflow: auto; padding-bottom: 4px; scrollbar-width: thin; }
+.block { background: var(--card); border-radius: var(--radius); padding: 16px 16px 14px; box-shadow: inset 0 0 0 1px var(--line-2); }
+.block h2 { margin: 0 0 12px; font: 600 11px/1 var(--sans); letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); display: flex; justify-content: space-between; }
+.block h2 span { letter-spacing: 0.04em; text-transform: none; font-weight: 400; }
+.group + .group { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line-2); }
+.group-label { font: 600 11px/1 var(--sans); letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-2); margin-bottom: 10px; }
+
+.species-list { display: grid; gap: 6px; }
+.species-opt { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 2px 10px; width: 100%; padding: 10px 12px; text-align: left; border: 0; border-radius: 10px;
+  background: var(--card-2); cursor: pointer; box-shadow: inset 0 0 0 1px var(--line-2); }
+.species-opt:hover:not(:disabled) { box-shadow: inset 0 0 0 1px var(--line); }
+.species-opt[aria-checked="true"] { box-shadow: inset 0 0 0 1.5px var(--ink); background: #f4f1eb; }
+.species-opt:disabled { cursor: not-allowed; opacity: 0.55; background: transparent; }
+.species-opt .nm { font: 400 17px/1.2 var(--serif); }
+.species-opt .ct { grid-column: 1; font-size: 12px; color: var(--muted); }
+.species-opt .chip { grid-row: 1 / span 2; grid-column: 2; font: 600 10px/1 var(--sans); letter-spacing: 0.1em; text-transform: uppercase; padding: 5px 8px; border-radius: 999px; background: rgba(34,31,27,0.07); color: var(--ink-2); }
+.species-opt .chip.complete { background: var(--ink); color: var(--card-2); }
+
+.btn-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.btn { min-height: 38px; padding: 6px 10px; border: 0; border-radius: 10px; background: var(--card-2); box-shadow: inset 0 0 0 1px var(--line); cursor: pointer; font-size: 13.5px; font-weight: 500; }
+.btn:hover:not(:disabled) { background: #f5f2ec; }
+.btn:active:not(:disabled) { transform: translateY(1px); }
+.btn.primary { background: var(--accent); color: var(--accent-ink); box-shadow: none; }
+.btn.primary:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 88%, black); }
+.btn.wide { grid-column: span 3; }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn.flash { animation: flash .35s; }
+@keyframes flash { from { box-shadow: inset 0 0 0 2px var(--accent); } }
+
+.toggle-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 36px; }
+.toggle-row + .toggle-row { border-top: 1px solid var(--line-2); }
+.toggle-row .lbl { font-size: 14px; }
+.toggle-row .sub { display: block; font-size: 12px; color: var(--muted); }
+.switch { position: relative; flex: none; width: 42px; height: 24px; border: 0; border-radius: 999px; background: rgba(34,31,27,0.18); cursor: pointer; transition: background .2s; }
+.switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,0.2); transition: transform .2s; }
+.switch[aria-checked="true"] { background: var(--ink); }
+.switch[aria-checked="true"]::after { transform: translateX(18px); }
+
+.slider + .slider { margin-top: 12px; }
+.slider .row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
+.slider label { font-size: 14px; }
+.slider output { font: 12.5px var(--mono); color: var(--ink-2); font-variant-numeric: tabular-nums; }
+input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 26px; background: transparent; margin: 0; cursor: pointer; }
+input[type=range]::-webkit-slider-runnable-track { height: 3px; border-radius: 2px; background: linear-gradient(to right, var(--ink) var(--p, 50%), rgba(34,31,27,0.18) var(--p, 50%)); }
+input[type=range]::-moz-range-track { height: 3px; border-radius: 2px; background: rgba(34,31,27,0.18); }
+input[type=range]::-moz-range-progress { height: 3px; border-radius: 2px; background: var(--ink); }
+input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; margin-top: -7.5px; border-radius: 50%; background: #fff; border: 1.5px solid var(--ink); }
+input[type=range]::-moz-range-thumb { width: 16px; height: 16px; border-radius: 50%; background: #fff; border: 1.5px solid var(--ink); }
+input[type=range]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+
+.swatches { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.swatch { display: flex; flex-direction: column; align-items: center; gap: 7px; padding: 10px 6px 8px; border: 0; border-radius: 10px; background: var(--card-2); box-shadow: inset 0 0 0 1px var(--line-2); cursor: pointer; font-size: 12.5px; }
+.swatch .chip { width: 34px; height: 34px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.12); }
+.swatch[aria-checked="true"] { box-shadow: inset 0 0 0 1.5px var(--ink); background: #f4f1eb; }
+select.sel { width: 100%; height: 36px; border-radius: 10px; border: 0; padding: 0 10px; background: var(--card-2); box-shadow: inset 0 0 0 1px var(--line); }
+
+/* notes */
+.notes { background: var(--card); border-radius: var(--radius); box-shadow: inset 0 0 0 1px var(--line-2); }
+.notes > summary { list-style: none; cursor: pointer; padding: 15px 16px; font: 600 11px/1 var(--sans); letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); display: flex; justify-content: space-between; }
+.notes > summary::-webkit-details-marker { display: none; }
+.notes > summary::after { content: "+"; font: 400 16px/0.7 var(--sans); }
+.notes[open] > summary::after { content: "–"; }
+.notes-body { padding: 0 16px 16px; font-size: 13px; line-height: 1.55; color: var(--ink-2); }
+.notes-body h3 { margin: 14px 0 6px; font: 600 11px/1 var(--sans); letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink); }
+.notes-body h3:first-child { margin-top: 0; }
+.notes-body ul { margin: 0; padding-left: 16px; }
+.notes-body li + li { margin-top: 4px; }
+.notes-body .tag { display: inline-block; font: 600 9.5px/1 var(--sans); letter-spacing: 0.1em; text-transform: uppercase; padding: 3px 6px; border-radius: 4px; margin-right: 6px; vertical-align: 1px; }
+.tag.ok { background: #d8e4d0; color: #2f4a25; }
+.tag.approx { background: #efdcc4; color: #6b4316; }
+.tag.limit { background: #e6d3d3; color: #6b2a2a; }
+.notes-body .kv { font: 12px var(--mono); }
+
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+@media (max-width: 1080px) {
+  .layout { grid-template-columns: minmax(0, 1fr) 312px; gap: 20px; }
+  .title-block { grid-template-columns: 1fr; }
+  .lede { max-width: 60ch; }
+}
+@media (max-width: 860px) {
+  .page { padding: 14px 16px 32px; }
+  .masthead .meta { display: none; }
+  .layout { grid-template-columns: 1fr; gap: 16px; margin-top: 14px; }
+  .panel { position: static; max-height: none; overflow: visible; }
+  .title-block { margin-bottom: 12px; }
+  h1 .l2 { font-size: clamp(46px, 14vw, 84px); }
+  .lede { font-size: 15.5px; }
+  .viewport { aspect-ratio: auto; height: min(64vh, 560px); min-height: 340px; margin: 0 -16px; border-radius: 0; }
+  .tools { left: 50%; top: auto; bottom: 12px; transform: translateX(-50%); }
+  .tool { height: 42px; padding: 0 16px 0 13px; font-size: 14px; }
+  .hint { bottom: 66px; }
+  .status { top: 12px; right: 12px; }
+  .readouts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .readout:nth-child(odd) { padding-left: 0; border-left: 0; }
+  .readout { border-bottom: 1px solid var(--line-2); padding-bottom: 10px; }
+  .readout dd { font-size: 26px; }
+  .btn { min-height: 44px; }
+  .switch { width: 48px; height: 28px; }
+  .switch::after { width: 22px; height: 22px; }
+  .switch[aria-checked="true"]::after { transform: translateX(20px); }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="masthead">
+    <div class="brand">Plush Creatures<em>a soft-body studio</em></div>
+    <div class="meta" id="meta">WebGPU · XPBD</div>
+  </header>
+  <main class="layout">
+    <section class="stage" aria-label="Simulation">
+      <div class="title-block">
+        <p class="kicker" id="kicker"></p>
+        <h1 id="title"><span class="l1"></span><span class="l2"></span></h1>
+        <p class="lede" id="lede"></p>
+      </div>
+      <div class="viewport" id="viewport">
+        <canvas id="gpu" tabindex="0" aria-label="Interactive plush simulation viewport"></canvas>
+        <div class="tools" id="tools" role="radiogroup" aria-label="Interaction tool"></div>
+        <div class="status" id="status" aria-live="polite"><span class="dot"></span><span id="stateLabel">Starting…</span></div>
+        <div class="hint" id="hint"></div>
+        <div class="overlay" id="overlay">Sewing…</div>
+        <div class="fallback" id="fallback" hidden></div>
+      </div>
+      <dl class="readouts" id="readouts"></dl>
+      <p class="engine-line" id="engineLine"></p>
+    </section>
+    <aside class="panel" id="panel" aria-label="Controls">
+      <section class="block"><h2>Species</h2><div class="species-list" id="speciesList" role="radiogroup" aria-label="Species"></div></section>
+      <section class="block" id="speciesBlock"><h2>Controls <span id="speciesName"></span></h2><div id="speciesControls"></div></section>
+      <section class="block"><h2>Simulation <span>global</span></h2><div id="globalControls"></div></section>
+      <details class="notes" id="notes"><summary>Technical notes</summary><div class="notes-body" id="notesBody"></div></details>
+    </aside>
+  </main>
+</div>
+
+<!-- ===== ENGINE (species-independent) ===== -->
+<script id="engine-src">
+'use strict';
+/* =========================================================================
+   PLUSH CREATURES — ENGINE
+   Species-independent systems. Nothing in the engine may reference a
+   particular animal: anatomy, physics tuning, locomotion choice, behaviours,
+   interaction regions, materials and controls all arrive through a
+   SpeciesDefinition object (see the SPECIES script further down).
+   ========================================================================= */
+const Engine = (() => {
+
+/* ---------- 0. Math ---------------------------------------------------- */
+const clamp = (x, a, b) => (x < a ? a : x > b ? b : x);
+const lerp = (a, b, t) => a + (b - a) * t;
+const smoothstep = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+const wrapAngle = (a) => { while (a > Math.PI) a -= 2 * Math.PI; while (a < -Math.PI) a += 2 * Math.PI; return a; };
+const damp = (rate, dt) => 1 - Math.exp(-rate * dt);
+
+const v3 = {
+  add: (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]],
+  sub: (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]],
+  scale: (a, s) => [a[0] * s, a[1] * s, a[2] * s],
+  dot: (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2],
+  cross: (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]],
+  len: (a) => Math.hypot(a[0], a[1], a[2]),
+  dist: (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]),
+  norm: (a) => { const l = Math.hypot(a[0], a[1], a[2]) || 1; return [a[0] / l, a[1] / l, a[2] / l]; },
+  lerp: (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t],
+};
+
+/** Deterministic PRNG (mulberry32). */
+function makeRng(seed) {
+  let s = seed >>> 0;
+  return () => {
+    s = (s + 0x6D2B79F5) | 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/** Column-major 3x3 from quaternion [x,y,z,w]. */
+function quatToMat3(q, out = new Float64Array(9), o = 0) {
+  const x = q[o], y = q[o + 1], z = q[o + 2], w = q[o + 3];
+  out[0] = 1 - 2 * (y * y + z * z); out[1] = 2 * (x * y + w * z); out[2] = 2 * (x * z - w * y);
+  out[3] = 2 * (x * y - w * z); out[4] = 1 - 2 * (x * x + z * z); out[5] = 2 * (y * z + w * x);
+  out[6] = 2 * (x * z + w * y); out[7] = 2 * (y * z - w * x); out[8] = 1 - 2 * (x * x + y * y);
+  return out;
+}
+function quatAxisAngle(ax, ang) {
+  const s = Math.sin(ang / 2);
+  return [ax[0] * s, ax[1] * s, ax[2] * s, Math.cos(ang / 2)];
+}
+
+/**
+ * Rotation extraction (Müller et al. 2016, "A Robust Method to Extract the
+ * Rotational Part of Deformations"). A is column-major 3x3, Q holds a warm-
+ * started quaternion at offset o which is refined in place.
+ */
+function extractRotation(A, Q, o, iters) {
+  let x = Q[o], y = Q[o + 1], z = Q[o + 2], w = Q[o + 3];
+  for (let it = 0; it < iters; it++) {
+    const r00 = 1 - 2 * (y * y + z * z), r10 = 2 * (x * y + w * z), r20 = 2 * (x * z - w * y);
+    const r01 = 2 * (x * y - w * z), r11 = 1 - 2 * (x * x + z * z), r21 = 2 * (y * z + w * x);
+    const r02 = 2 * (x * z + w * y), r12 = 2 * (y * z - w * x), r22 = 1 - 2 * (x * x + y * y);
+    let ox = (r10 * A[2] - r20 * A[1]) + (r11 * A[5] - r21 * A[4]) + (r12 * A[8] - r22 * A[7]);
+    let oy = (r20 * A[0] - r00 * A[2]) + (r21 * A[3] - r01 * A[5]) + (r22 * A[6] - r02 * A[8]);
+    let oz = (r00 * A[1] - r10 * A[0]) + (r01 * A[4] - r11 * A[3]) + (r02 * A[7] - r12 * A[6]);
+    const den = Math.abs(r00 * A[0] + r10 * A[1] + r20 * A[2] + r01 * A[3] + r11 * A[4] + r21 * A[5] +
+      r02 * A[6] + r12 * A[7] + r22 * A[8]) + 1e-9;
+    ox /= den; oy /= den; oz /= den;
+    const ang = Math.sqrt(ox * ox + oy * oy + oz * oz);
+    if (ang < 1e-9) break;
+    const s = Math.sin(ang * 0.5) / ang, c = Math.cos(ang * 0.5);
+    const ax = ox * s, ay = oy * s, az = oz * s;
+    const nx = c * x + ax * w + ay * z - az * y;
+    const ny = c * y - ax * z + ay * w + az * x;
+    const nz = c * z + ax * y - ay * x + az * w;
+    const nw = c * w - ax * x - ay * y - az * z;
+    const il = 1 / Math.hypot(nx, ny, nz, nw);
+    x = nx * il; y = ny * il; z = nz * il; w = nw * il;
+  }
+  Q[o] = x; Q[o + 1] = y; Q[o + 2] = z; Q[o + 3] = w;
+}
+
+/** Column-major 4x4 matrices (WebGPU clip space: z in [0,1]). */
+const mat4 = {
+  perspective(fovy, aspect, near, far) {
+    const f = 1 / Math.tan(fovy / 2), o = new Float32Array(16);
+    o[0] = f / aspect; o[5] = f; o[10] = far / (near - far); o[11] = -1; o[14] = (near * far) / (near - far);
+    return o;
+  },
+  ortho(l, r, b, t, n, f) {
+    const o = new Float32Array(16);
+    o[0] = 2 / (r - l); o[5] = 2 / (t - b); o[10] = 1 / (n - f);
+    o[12] = (l + r) / (l - r); o[13] = (t + b) / (b - t); o[14] = n / (n - f); o[15] = 1;
+    return o;
+  },
+  lookAt(eye, target, up) {
+    const z = v3.norm(v3.sub(eye, target)), x = v3.norm(v3.cross(up, z)), y = v3.cross(z, x);
+    return new Float32Array([x[0], y[0], z[0], 0, x[1], y[1], z[1], 0, x[2], y[2], z[2], 0,
+      -v3.dot(x, eye), -v3.dot(y, eye), -v3.dot(z, eye), 1]);
+  },
+  mul(a, b) {
+    const o = new Float32Array(16);
+    for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) {
+      o[c * 4 + r] = a[r] * b[c * 4] + a[4 + r] * b[c * 4 + 1] + a[8 + r] * b[c * 4 + 2] + a[12 + r] * b[c * 4 + 3];
+    }
+    return o;
+  },
+  invert(m) {
+    const a00 = m[0], a01 = m[1], a02 = m[2], a03 = m[3], a10 = m[4], a11 = m[5], a12 = m[6], a13 = m[7];
+    const a20 = m[8], a21 = m[9], a22 = m[10], a23 = m[11], a30 = m[12], a31 = m[13], a32 = m[14], a33 = m[15];
+    const b00 = a00 * a11 - a01 * a10, b01 = a00 * a12 - a02 * a10, b02 = a00 * a13 - a03 * a10;
+    const b03 = a01 * a12 - a02 * a11, b04 = a01 * a13 - a03 * a11, b05 = a02 * a13 - a03 * a12;
+    const b06 = a20 * a31 - a21 * a30, b07 = a20 * a32 - a22 * a30, b08 = a20 * a33 - a23 * a30;
+    const b09 = a21 * a32 - a22 * a31, b10 = a21 * a33 - a23 * a31, b11 = a22 * a33 - a23 * a32;
+    const det = b00 * b11 - b01 * b10 + b02 * b09 + b03 * b08 - b04 * b07 + b05 * b06;
+    const id = 1 / det, o = new Float32Array(16);
+    o[0] = (a11 * b11 - a12 * b10 + a13 * b09) * id; o[1] = (a02 * b10 - a01 * b11 - a03 * b09) * id;
+    o[2] = (a31 * b05 - a32 * b04 + a33 * b03) * id; o[3] = (a22 * b04 - a21 * b05 - a23 * b03) * id;
+    o[4] = (a12 * b08 - a10 * b11 - a13 * b07) * id; o[5] = (a00 * b11 - a02 * b08 + a03 * b07) * id;
+    o[6] = (a32 * b02 - a30 * b05 - a33 * b01) * id; o[7] = (a20 * b05 - a22 * b02 + a23 * b01) * id;
+    o[8] = (a10 * b10 - a11 * b08 + a13 * b06) * id; o[9] = (a01 * b08 - a00 * b10 - a03 * b06) * id;
+    o[10] = (a30 * b04 - a31 * b02 + a33 * b00) * id; o[11] = (a21 * b02 - a20 * b04 - a23 * b00) * id;
+    o[12] = (a11 * b07 - a10 * b09 - a12 * b06) * id; o[13] = (a00 * b09 - a01 * b07 + a02 * b06) * id;
+    o[14] = (a31 * b01 - a30 * b03 - a32 * b00) * id; o[15] = (a20 * b03 - a21 * b01 + a22 * b00) * id;
+    return o;
+  },
+  xform(m, p) {
+    const x = p[0], y = p[1], z = p[2];
+    const w = m[3] * x + m[7] * y + m[11] * z + m[15];
+    return [(m[0] * x + m[4] * y + m[8] * z + m[12]) / w, (m[1] * x + m[5] * y + m[9] * z + m[13]) / w,
+      (m[2] * x + m[6] * y + m[10] * z + m[14]) / w];
+  },
+};
+
+/** sRGB hex → linear [r,g,b]. */
+function hexToLinear(hex) {
+  const h = hex.replace('#', '');
+  return [0, 2, 4].map((i) => Math.pow(parseInt(h.slice(i, i + 2), 16) / 255, 2.2));
+}
+
+/* ---------- 1. Signed-distance toolkit (used by species anatomy) ------- */
+const SDF = {
+  smin(a, b, k) { const h = Math.max(k - Math.abs(a - b), 0) / k; return Math.min(a, b) - h * h * k * 0.25; },
+  smax(a, b, k) { const h = Math.max(k - Math.abs(a - b), 0) / k; return Math.max(a, b) + h * h * k * 0.25; },
+  sphere(x, y, z, cx, cy, cz, r) { const dx = x - cx, dy = y - cy, dz = z - cz; return Math.sqrt(dx * dx + dy * dy + dz * dz) - r; },
+  ellipsoid(x, y, z, cx, cy, cz, rx, ry, rz) {
+    const px = x - cx, py = y - cy, pz = z - cz;
+    const ax = px / rx, ay = py / ry, az = pz / rz, bx = ax / rx, by = ay / ry, bz = az / rz;
+    const k0 = Math.sqrt(ax * ax + ay * ay + az * az), k1 = Math.sqrt(bx * bx + by * by + bz * bz);
+    return k1 < 1e-9 ? -Math.min(rx, ry, rz) : (k0 * (k0 - 1)) / k1;
+  },
+  /** Capsule with radius interpolated from ra (at a) to rb (at b). */
+  cone(x, y, z, a, b, ra, rb) {
+    const bx = b[0] - a[0], by = b[1] - a[1], bz = b[2] - a[2];
+    const px = x - a[0], py = y - a[1], pz = z - a[2];
+    const t = clamp((px * bx + py * by + pz * bz) / (bx * bx + by * by + bz * bz), 0, 1);
+    const qx = px - bx * t, qy = py - by * t, qz = pz - bz * t;
+    return Math.sqrt(qx * qx + qy * qy + qz * qz) - (ra + (rb - ra) * t);
+  },
+  /** Exact 2D polygon distance (Inigo Quilez). pts is flat [u0,v0,u1,v1,...]. */
+  polygon(u, v, pts) {
+    const N = pts.length / 2;
+    let d = (u - pts[0]) ** 2 + (v - pts[1]) ** 2, s = 1;
+    for (let i = 0, j = N - 1; i < N; j = i, i++) {
+      const vix = pts[2 * i], viy = pts[2 * i + 1], vjx = pts[2 * j], vjy = pts[2 * j + 1];
+      const ex = vjx - vix, ey = vjy - viy, wx = u - vix, wy = v - viy;
+      const t = clamp((wx * ex + wy * ey) / (ex * ex + ey * ey), 0, 1);
+      const bx = wx - ex * t, by = wy - ey * t;
+      d = Math.min(d, bx * bx + by * by);
+      const c1 = v >= viy, c2 = v < vjy, c3 = ex * wy > ey * wx;
+      if ((c1 && c2 && c3) || (!c1 && !c2 && !c3)) s = -s;
+    }
+    return s * Math.sqrt(d);
+  },
+  /** Rounded extrusion of a 2D distance d2 along w with half thickness h. */
+  extrude(d2, w, h, r) {
+    const qx = d2 + r, qy = Math.abs(w) - h + r;
+    const mx = qx > 0 ? qx : 0, my = qy > 0 ? qy : 0;
+    return Math.min(Math.max(qx, qy), 0) + Math.sqrt(mx * mx + my * my) - r;
+  },
+  /** Orthonormal frame for planar shapes: u (in-plane), v (in-plane), w (normal). */
+  frame(origin, uDir, vDir) {
+    const v = v3.norm(vDir);
+    const u = v3.norm(v3.sub(uDir, v3.scale(v, v3.dot(uDir, v))));
+    return { o: origin, u, v, w: v3.cross(u, v) };
+  },
+  /** Puffy planar appendage: polygon in a frame, extruded with a pillow taper toward its edges. */
+  planar(x, y, z, F, poly, h, round, taper) {
+    const dx = x - F.o[0], dy = y - F.o[1], dz = z - F.o[2];
+    const w = dx * F.w[0] + dy * F.w[1] + dz * F.w[2];
+    if (Math.abs(w) > h + 0.25) return Math.abs(w) - h;
+    const u = dx * F.u[0] + dy * F.u[1] + dz * F.u[2];
+    const v = dx * F.v[0] + dy * F.v[1] + dz * F.v[2];
+    const d2 = SDF.polygon(u, v, poly);
+    const hh = taper > 0 ? h * (0.4 + 0.6 * smoothstep(0, taper, -d2)) : h;
+    return SDF.extrude(d2, w, hh, Math.min(round, hh * 0.92));
+  },
+};
+
+/* ---------- 2. Procedural geometry: surface nets ----------------------- */
+const CUBE_EDGES = [[0, 1], [2, 3], [4, 5], [6, 7], [0, 2], [1, 3], [4, 6], [5, 7], [0, 4], [1, 5], [2, 6], [3, 7]];
+
+/**
+ * Naive surface nets over a sampled SDF. A coarse pre-pass skips exact
+ * evaluation far from the surface. Vertices are then projected onto the
+ * zero set and given analytic-gradient normals.
+ */
+function surfaceNets(fn, bmin, bmax, h) {
+  const nx = Math.ceil((bmax[0] - bmin[0]) / h) + 1, ny = Math.ceil((bmax[1] - bmin[1]) / h) + 1;
+  const nz = Math.ceil((bmax[2] - bmin[2]) / h) + 1, sy = nx, sz = nx * ny;
+  const val = new Float32Array(nx * ny * nz);
+  const C = 4, cnx = Math.ceil((nx - 1) / C) + 1, cny = Math.ceil((ny - 1) / C) + 1, cnz = Math.ceil((nz - 1) / C) + 1;
+  const cval = new Float32Array(cnx * cny * cnz);
+  for (let k = 0; k < cnz; k++) for (let j = 0; j < cny; j++) for (let i = 0; i < cnx; i++) {
+    cval[i + cnx * (j + cny * k)] = fn(bmin[0] + i * C * h, bmin[1] + j * C * h, bmin[2] + k * C * h);
+  }
+  const thr = 1.6 * C * h;
+  for (let k = 0; k < nz; k++) for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+    const dc = cval[Math.round(i / C) + cnx * (Math.round(j / C) + cny * Math.round(k / C))];
+    val[i + sy * j + sz * k] = Math.abs(dc) > thr ? dc : fn(bmin[0] + i * h, bmin[1] + j * h, bmin[2] + k * h);
+  }
+  const cx = nx - 1, cy = ny - 1;
+  const cubeId = (i, j, k) => i + cx * (j + cy * k);
+  const vid = new Int32Array(cx * cy * (nz - 1)).fill(-1);
+  const pos = [], cv = new Float32Array(8);
+  for (let k = 0; k < nz - 1; k++) for (let j = 0; j < ny - 1; j++) for (let i = 0; i < nx - 1; i++) {
+    let mask = 0;
+    for (let c = 0; c < 8; c++) {
+      const v = val[(i + (c & 1)) + sy * (j + ((c >> 1) & 1)) + sz * (k + (c >> 2))];
+      cv[c] = v; if (v < 0) mask |= 1 << c;
+    }
+    if (mask === 0 || mask === 255) continue;
+    let ax = 0, ay = 0, az = 0, cnt = 0;
+    for (const [a, b] of CUBE_EDGES) {
+      if (((mask >> a) & 1) === ((mask >> b) & 1)) continue;
+      const t = cv[a] / (cv[a] - cv[b]);
+      ax += (a & 1) + t * ((b & 1) - (a & 1));
+      ay += ((a >> 1) & 1) + t * (((b >> 1) & 1) - ((a >> 1) & 1));
+      az += (a >> 2) + t * ((b >> 2) - (a >> 2));
+      cnt++;
+    }
+    vid[cubeId(i, j, k)] = pos.length / 3;
+    pos.push(bmin[0] + (i + ax / cnt) * h, bmin[1] + (j + ay / cnt) * h, bmin[2] + (k + az / cnt) * h);
+  }
+  const idx = [];
+  const quad = (a, b, c, d) => {
+    if (a < 0 || b < 0 || c < 0 || d < 0) return;
+    const dac = (pos[3 * a] - pos[3 * c]) ** 2 + (pos[3 * a + 1] - pos[3 * c + 1]) ** 2 + (pos[3 * a + 2] - pos[3 * c + 2]) ** 2;
+    const dbd = (pos[3 * b] - pos[3 * d]) ** 2 + (pos[3 * b + 1] - pos[3 * d + 1]) ** 2 + (pos[3 * b + 2] - pos[3 * d + 2]) ** 2;
+    if (dac < dbd) idx.push(a, b, c, a, c, d); else idx.push(a, b, d, b, c, d);
+  };
+  for (let k = 1; k < nz - 1; k++) for (let j = 1; j < ny - 1; j++) for (let i = 1; i < nx - 1; i++) {
+    const v0 = val[i + sy * j + sz * k], in0 = v0 < 0;
+    if (in0 !== (val[i + 1 + sy * j + sz * k] < 0)) {
+      const a = vid[cubeId(i, j - 1, k - 1)], b = vid[cubeId(i, j, k - 1)], c = vid[cubeId(i, j, k)], d = vid[cubeId(i, j - 1, k)];
+      if (in0) quad(a, b, c, d); else quad(d, c, b, a);
+    }
+    if (in0 !== (val[i + sy * (j + 1) + sz * k] < 0)) {
+      const a = vid[cubeId(i - 1, j, k - 1)], b = vid[cubeId(i - 1, j, k)], c = vid[cubeId(i, j, k)], d = vid[cubeId(i, j, k - 1)];
+      if (in0) quad(a, b, c, d); else quad(d, c, b, a);
+    }
+    if (in0 !== (val[i + sy * j + sz * (k + 1)] < 0)) {
+      const a = vid[cubeId(i - 1, j - 1, k)], b = vid[cubeId(i, j - 1, k)], c = vid[cubeId(i, j, k)], d = vid[cubeId(i - 1, j, k)];
+      if (in0) quad(a, b, c, d); else quad(d, c, b, a);
+    }
+  }
+  const P = new Float32Array(pos), N = new Float32Array(pos.length);
+  const e = h * 0.25;
+  const grad = (x, y, z, out) => { // tetrahedral gradient (4 evaluations)
+    const a = fn(x + e, y - e, z - e), b = fn(x - e, y - e, z + e), c = fn(x - e, y + e, z - e), d = fn(x + e, y + e, z + e);
+    out[0] = a - b - c + d; out[1] = -a - b + c + d; out[2] = -a + b - c + d;
+  };
+  const g = [0, 0, 0];
+  for (let v = 0; v < P.length; v += 3) {
+    let x = P[v], y = P[v + 1], z = P[v + 2];
+    grad(x, y, z, g);
+    for (let it = 0; it < 2; it++) { // Newton projection onto the zero set: ∇f ≈ g / 4e
+      const gl = Math.hypot(g[0], g[1], g[2]);
+      if (gl < 1e-12) break;
+      const s = clamp((fn(x, y, z) * 4 * e) / gl, -h * 0.6, h * 0.6);
+      x -= (g[0] / gl) * s; y -= (g[1] / gl) * s; z -= (g[2] / gl) * s;
+      grad(x, y, z, g);
+    }
+    const l2 = Math.hypot(g[0], g[1], g[2]) || 1;
+    P[v] = x; P[v + 1] = y; P[v + 2] = z;
+    N[v] = g[0] / l2; N[v + 1] = g[1] / l2; N[v + 2] = g[2] / l2;
+  }
+  return { positions: P, normals: N, indices: new Uint32Array(idx) };
+}
+
+/** March from `from` along `dir` and bisect to the first zero crossing of fn. */
+function surfacePoint(fn, from, dir, maxDist = 2, step = 0.01) {
+  const d = v3.norm(dir);
+  let prev = fn(from[0], from[1], from[2]), t0 = 0;
+  for (let t = step; t <= maxDist; t += step) {
+    const p = [from[0] + d[0] * t, from[1] + d[1] * t, from[2] + d[2] * t];
+    const cur = fn(p[0], p[1], p[2]);
+    if ((prev < 0) !== (cur < 0)) {
+      let a = t0, b = t;
+      for (let i = 0; i < 24; i++) {
+        const m = (a + b) / 2, fm = fn(from[0] + d[0] * m, from[1] + d[1] * m, from[2] + d[2] * m);
+        if ((fm < 0) === (prev < 0)) a = m; else b = m;
+      }
+      const m = (a + b) / 2;
+      return [from[0] + d[0] * m, from[1] + d[1] * m, from[2] + d[2] * m];
+    }
+    prev = cur; t0 = t;
+  }
+  return null;
+}
+
+/* ---------- 3. Soft body: lattice construction + XPBD solver ----------- */
+/**
+ * Builds a hexahedral lattice that covers the SDF interior and every render
+ * vertex. Each hex gets 8 shared particles, a fill fraction (for mass and
+ * volume read-outs), a stiffness multiplier from the species' stuffing
+ * distribution, and a 5-tet split for volume constraints.
+ */
+function buildLattice(fn, verts, H, stuffingAt) {
+  let mn = [Infinity, Infinity, Infinity], mx = [-Infinity, -Infinity, -Infinity];
+  for (let i = 0; i < verts.length; i += 3) for (let a = 0; a < 3; a++) {
+    mn[a] = Math.min(mn[a], verts[i + a]); mx[a] = Math.max(mx[a], verts[i + a]);
+  }
+  const origin = mn.map((m) => m - H * 0.5);
+  const dims = [0, 1, 2].map((a) => Math.ceil((mx[a] - origin[a]) / H + 0.5));
+  const [cx, cy, cz] = dims;
+  const cid = (i, j, k) => i + cx * (j + cy * k);
+  const active = new Uint8Array(cx * cy * cz);
+  for (let k = 0; k < cz; k++) for (let j = 0; j < cy; j++) for (let i = 0; i < cx; i++) {
+    if (fn(origin[0] + (i + 0.5) * H, origin[1] + (j + 0.5) * H, origin[2] + (k + 0.5) * H) < -H * 0.05) active[cid(i, j, k)] = 1;
+  }
+  const cellOfPoint = (x, y, z) => [
+    clamp(Math.floor((x - origin[0]) / H), 0, cx - 1), clamp(Math.floor((y - origin[1]) / H), 0, cy - 1),
+    clamp(Math.floor((z - origin[2]) / H), 0, cz - 1)];
+  for (let v = 0; v < verts.length; v += 3) {
+    const [i, j, k] = cellOfPoint(verts[v], verts[v + 1], verts[v + 2]);
+    active[cid(i, j, k)] = 1;
+  }
+  const px = cx + 1, py = cy + 1;
+  const pid = new Int32Array(px * py * (cz + 1)).fill(-1);
+  const rest = [], cells = [], cellOf = new Int32Array(cx * cy * cz).fill(-1), cellIJK = [];
+  for (let k = 0; k < cz; k++) for (let j = 0; j < cy; j++) for (let i = 0; i < cx; i++) {
+    if (!active[cid(i, j, k)]) continue;
+    cellOf[cid(i, j, k)] = cells.length / 8;
+    cellIJK.push(i, j, k);
+    for (let c = 0; c < 8; c++) {
+      const ci = i + (c & 1), cj = j + ((c >> 1) & 1), ck = k + (c >> 2), key = ci + px * (cj + py * ck);
+      if (pid[key] < 0) { pid[key] = rest.length / 3; rest.push(origin[0] + ci * H, origin[1] + cj * H, origin[2] + ck * H); }
+      cells.push(pid[key]);
+    }
+  }
+  const n = rest.length / 3, nc = cells.length / 8;
+  const fill = new Float32Array(nc), stiff = new Float32Array(nc), mass = new Float64Array(n);
+  for (let c = 0; c < nc; c++) {
+    const i = cellIJK[3 * c], j = cellIJK[3 * c + 1], k = cellIJK[3 * c + 2];
+    let inside = 0;
+    for (let s = 0; s < 27; s++) {
+      const x = origin[0] + (i + ((s % 3) + 0.5) / 3) * H, y = origin[1] + (j + ((((s / 3) | 0) % 3) + 0.5) / 3) * H;
+      const z = origin[2] + (k + (((s / 9) | 0) + 0.5) / 3) * H;
+      if (fn(x, y, z) < 0) inside++;
+    }
+    fill[c] = Math.max(inside / 27, 0.06);
+    const ccx = origin[0] + (i + 0.5) * H, ccy = origin[1] + (j + 0.5) * H, ccz = origin[2] + (k + 0.5) * H;
+    const st = stuffingAt ? stuffingAt(ccx, ccy, ccz) : { density: 1, stiffness: 1 };
+    stiff[c] = st.stiffness;
+    for (let q = 0; q < 8; q++) mass[cells[8 * c + q]] += (fill[c] * st.density) / 8;
+  }
+  const surfOff = new Float32Array(n);
+  for (let p = 0; p < n; p++) surfOff[p] = clamp(fn(rest[3 * p], rest[3 * p + 1], rest[3 * p + 2]), 0, H);
+  // 5-tet split, alternating parity so neighbouring hexes share face diagonals.
+  const TA = [[1, 2, 4, 7], [0, 1, 2, 4], [3, 1, 7, 2], [5, 1, 4, 7], [6, 2, 7, 4]];
+  const TB = [[0, 3, 5, 6], [1, 0, 5, 3], [2, 0, 3, 6], [4, 0, 6, 5], [7, 3, 6, 5]];
+  const tets = [];
+  for (let c = 0; c < nc; c++) {
+    const par = (cellIJK[3 * c] + cellIJK[3 * c + 1] + cellIJK[3 * c + 2]) & 1;
+    for (const t of par ? TB : TA) tets.push(cells[8 * c + t[0]], cells[8 * c + t[1]], cells[8 * c + t[2]], cells[8 * c + t[3]]);
+  }
+  // Unique edges for the debug overlay.
+  const edgeSet = new Set(), edges = [];
+  for (let c = 0; c < nc; c++) for (const [a, b] of CUBE_EDGES) {
+    const p = cells[8 * c + a], q = cells[8 * c + b], key = Math.min(p, q) * n + Math.max(p, q);
+    if (!edgeSet.has(key)) { edgeSet.add(key); edges.push(p, q); }
+  }
+  /** Embed a rest-space point: returns containing cell and trilinear coordinates. */
+  function embed(x, y, z) {
+    let [i, j, k] = cellOfPoint(x, y, z);
+    let c = cellOf[cid(i, j, k)];
+    if (c < 0) { // nearest active cell (only happens for anchors outside the lattice)
+      let best = Infinity;
+      for (let q = 0; q < nc; q++) {
+        const d = (origin[0] + (cellIJK[3 * q] + 0.5) * H - x) ** 2 + (origin[1] + (cellIJK[3 * q + 1] + 0.5) * H - y) ** 2 +
+          (origin[2] + (cellIJK[3 * q + 2] + 0.5) * H - z) ** 2;
+        if (d < best) { best = d; c = q; }
+      }
+      i = cellIJK[3 * c]; j = cellIJK[3 * c + 1]; k = cellIJK[3 * c + 2];
+    }
+    return { cell: c, u: (x - origin[0]) / H - i, v: (y - origin[1]) / H - j, w: (z - origin[2]) / H - k };
+  }
+  return { H, origin, dims, n, nc, rest: new Float64Array(rest), cells: new Int32Array(cells), fill, stiff, mass,
+    surfOff, tets: new Int32Array(tets), edges: new Uint32Array(edges), embed };
+}
+
+/** Trilinear position + deformation-gradient columns for a lattice cell. */
+function ffd(x, cells, c, u, v, w, outP, outF) {
+  const b = 8 * c;
+  const i0 = 3 * cells[b], i1 = 3 * cells[b + 1], i2 = 3 * cells[b + 2], i3 = 3 * cells[b + 3];
+  const i4 = 3 * cells[b + 4], i5 = 3 * cells[b + 5], i6 = 3 * cells[b + 6], i7 = 3 * cells[b + 7];
+  for (let a = 0; a < 3; a++) {
+    const x0 = x[i0 + a], x1 = x[i1 + a], x2 = x[i2 + a], x3 = x[i3 + a], x4 = x[i4 + a], x5 = x[i5 + a], x6 = x[i6 + a], x7 = x[i7 + a];
+    const a0 = x0 + (x1 - x0) * u, a1 = x2 + (x3 - x2) * u, a2 = x4 + (x5 - x4) * u, a3 = x6 + (x7 - x6) * u;
+    const b0 = a0 + (a1 - a0) * v, b1 = a2 + (a3 - a2) * v;
+    outP[a] = b0 + (b1 - b0) * w;
+    if (outF) {
+      outF[a] = (1 - v) * (1 - w) * (x1 - x0) + v * (1 - w) * (x3 - x2) + (1 - v) * w * (x5 - x4) + v * w * (x7 - x6);
+      outF[3 + a] = (1 - u) * (1 - w) * (x2 - x0) + u * (1 - w) * (x3 - x1) + (1 - u) * w * (x6 - x4) + u * w * (x7 - x5);
+      outF[6 + a] = (1 - u) * (1 - v) * (x4 - x0) + u * (1 - v) * (x5 - x1) + (1 - u) * v * (x6 - x2) + u * v * (x7 - x3);
+    }
+  }
+}
+
+/**
+ * XPBD soft body: per-hex shape matching (goal constraints with compliance)
+ * plus per-tet volume constraints, point attachments for grabbing, and
+ * environment collision with per-particle surface offsets.
+ */
+class SoftBody {
+  constructor(lat, cfg, spawn) {
+    this.lat = lat; this.cfg = cfg; this.n = lat.n;
+    const n = lat.n;
+    this.x = new Float64Array(3 * n); this.xp = new Float64Array(3 * n); this.v = new Float64Array(3 * n);
+    this.posed = new Float64Array(lat.rest); this.vPrev = new Float64Array(3 * n);
+    const total = lat.mass.reduce((a, b) => a + b, 0), meanM = total / n;
+    this.mass = new Float64Array(n); this.w = new Float64Array(n);
+    for (let i = 0; i < n; i++) { this.mass[i] = Math.max(lat.mass[i], meanM * 0.25) / total; this.w[i] = 1 / this.mass[i]; }
+    this.wMean = this.w.reduce((a, b) => a + b, 0) / n;
+    this.cellInvM = new Float64Array(lat.nc); this.cellW = new Float64Array(lat.nc);
+    for (let c = 0; c < lat.nc; c++) {
+      let s = 0;
+      for (let q = 0; q < 8; q++) s += this.mass[lat.cells[8 * c + q]];
+      this.cellInvM[c] = 1 / s; this.cellW[c] = 8 / s;
+    }
+    // Rest centre of mass (unposed) used for the global body frame.
+    let cm = [0, 0, 0], ms = 0;
+    for (let i = 0; i < n; i++) { for (let a = 0; a < 3; a++) cm[a] += lat.rest[3 * i + a] * this.mass[i]; ms += this.mass[i]; }
+    this.restCom = cm.map((c) => c / ms);
+    this.cellQ = new Float64Array(4 * lat.nc);
+    this.tetV0 = new Float64Array(lat.tets.length / 4);
+    for (let t = 0; t < this.tetV0.length; t++) this.tetV0[t] = this.tetVolume(lat.rest, t);
+    this.grab = null; this.contacts = 0;
+    this.frame = { c: [0, 0, 0], R: new Float64Array(9), q: new Float64Array([0, 0, 0, 1]), v: [0, 0, 0], omega: [0, 0, 0], speed: 0 };
+    this.substeps = cfg.substeps || 8;
+    this.setStuffing(1);
+    this.reset(spawn);
+  }
+  reset(spawn) {
+    const { rest } = this.lat, n = this.n, cy = Math.cos(spawn.yaw), sy = Math.sin(spawn.yaw);
+    for (let i = 0; i < n; i++) {
+      const rx = rest[3 * i] - this.restCom[0], ry = rest[3 * i + 1] - this.restCom[1], rz = rest[3 * i + 2] - this.restCom[2];
+      this.x[3 * i] = spawn.pos[0] + cy * rx + sy * rz;
+      this.x[3 * i + 1] = spawn.pos[1] + ry;
+      this.x[3 * i + 2] = spawn.pos[2] - sy * rx + cy * rz;
+    }
+    this.xp.set(this.x); this.v.fill(0); this.vPrev.fill(0); this.posed.set(rest);
+    const q = quatAxisAngle([0, 1, 0], spawn.yaw);
+    for (let c = 0; c < this.lat.nc; c++) this.cellQ.set(q, 4 * c);
+    this.frame.q.set(q); this.grab = null;
+    this.computeFrame(1 / 60);
+  }
+  /** Stuffing changes stiffness, volume compliance and the inflation target. */
+  setStuffing(s) {
+    const cfg = this.cfg, sdt = 1 / 60 / this.substeps, t = clamp((s - 0.3) / 1.2, 0, 1);
+    this.stuffing = s;
+    const k0 = lerp(cfg.shapeStiffness[0], cfg.shapeStiffness[1], t);
+    this.shapeAlpha = (this.wMean * (1 - k0)) / k0 * sdt * sdt;          // XPBD compliance for goal constraints
+    this.volAlpha = lerp(cfg.volumeCompliance[0], cfg.volumeCompliance[1], t);
+    this.inflate = lerp(cfg.inflate[0], cfg.inflate[1], t);
+    this.shapeScale = Math.cbrt(this.inflate);
+  }
+  tetVolume(X, t) {
+    const T = this.lat.tets, a = 3 * T[4 * t], b = 3 * T[4 * t + 1], c = 3 * T[4 * t + 2], d = 3 * T[4 * t + 3];
+    const e1x = X[b] - X[a], e1y = X[b + 1] - X[a + 1], e1z = X[b + 2] - X[a + 2];
+    const e2x = X[c] - X[a], e2y = X[c + 1] - X[a + 1], e2z = X[c + 2] - X[a + 2];
+    const e3x = X[d] - X[a], e3y = X[d + 1] - X[a + 1], e3z = X[d + 2] - X[a + 2];
+    return ((e1y * e2z - e1z * e2y) * e3x + (e1z * e2x - e1x * e2z) * e3y + (e1x * e2y - e1y * e2x) * e3z) / 6;
+  }
+  /** Live enclosed volume: deformed hex volume weighted by SDF fill. */
+  measureVolume() {
+    let V = 0;
+    for (let c = 0; c < this.lat.nc; c++) {
+      let cv = 0;
+      for (let t = 5 * c; t < 5 * c + 5; t++) cv += Math.abs(this.tetVolume(this.x, t));
+      V += cv * this.lat.fill[c];
+    }
+    return V;
+  }
+  step(dt, env, forces) {
+    const ns = this.substeps, sdt = dt / ns;
+    this.vPrev.set(this.v);
+    for (let s = 0; s < ns; s++) {
+      forces(sdt, s);
+      const x = this.x, xp = this.xp, v = this.v;
+      for (let i = 0; i < x.length; i++) { xp[i] = x[i]; x[i] += v[i] * sdt; }
+      this.solveShapes(sdt);
+      this.solveVolumes(sdt);
+      if (this.grab) this.solveGrab(sdt);
+      this.collide(env);
+      const inv = 1 / sdt;
+      for (let i = 0; i < x.length; i++) v[i] = (x[i] - xp[i]) * inv;
+    }
+    this.computeFrame(dt);
+  }
+  /** Per-hex shape matching; rotation extraction is inlined (hot path). */
+  solveShapes(sdt) {
+    const cells = this.lat.cells, nc = this.lat.nc, stiff = this.lat.stiff, x = this.x, r = this.posed, w = this.w, Q = this.cellQ, sc = this.shapeScale;
+    const aBase = this.shapeAlpha / (sdt * sdt), P = this._P || (this._P = new Int32Array(8)), M = this._M || (this._M = new Float64Array(8));
+    const m = this.mass, cellInvM = this.cellInvM, cellW = this.cellW;
+    for (let c = 0; c < nc; c++) {
+      // Mass-weighted centroids + one gain per cell keep each projection momentum-conserving.
+      const b = 8 * c, im = cellInvM[c];
+      let cxp = 0, cyp = 0, czp = 0, rx = 0, ry = 0, rz = 0;
+      for (let q = 0; q < 8; q++) {
+        const pi = cells[b + q], p = 3 * pi, mq = m[pi]; P[q] = p; M[q] = mq;
+        cxp += x[p] * mq; cyp += x[p + 1] * mq; czp += x[p + 2] * mq; rx += r[p] * mq; ry += r[p + 1] * mq; rz += r[p + 2] * mq;
+      }
+      cxp *= im; cyp *= im; czp *= im; rx *= im; ry *= im; rz *= im;
+      let A0 = 0, A1 = 0, A2 = 0, A3 = 0, A4 = 0, A5 = 0, A6 = 0, A7 = 0, A8 = 0;
+      for (let q = 0; q < 8; q++) {
+        const p = P[q], mq = M[q];
+        const dx = (x[p] - cxp) * mq, dy = (x[p + 1] - cyp) * mq, dz = (x[p + 2] - czp) * mq;
+        const ex = r[p] - rx, ey = r[p + 1] - ry, ez = r[p + 2] - rz;
+        A0 += dx * ex; A1 += dy * ex; A2 += dz * ex;
+        A3 += dx * ey; A4 += dy * ey; A5 += dz * ey;
+        A6 += dx * ez; A7 += dy * ez; A8 += dz * ez;
+      }
+      let qx = Q[4 * c], qy = Q[4 * c + 1], qz = Q[4 * c + 2], qw = Q[4 * c + 3];
+      let r00, r10, r20, r01, r11, r21, r02, r12, r22;
+      for (let it = 0; it < 3; it++) {
+        r00 = 1 - 2 * (qy * qy + qz * qz); r10 = 2 * (qx * qy + qw * qz); r20 = 2 * (qx * qz - qw * qy);
+        r01 = 2 * (qx * qy - qw * qz); r11 = 1 - 2 * (qx * qx + qz * qz); r21 = 2 * (qy * qz + qw * qx);
+        r02 = 2 * (qx * qz + qw * qy); r12 = 2 * (qy * qz - qw * qx); r22 = 1 - 2 * (qx * qx + qy * qy);
+        if (it === 2) break;
+        let ox = (r10 * A2 - r20 * A1) + (r11 * A5 - r21 * A4) + (r12 * A8 - r22 * A7);
+        let oy = (r20 * A0 - r00 * A2) + (r21 * A3 - r01 * A5) + (r22 * A6 - r02 * A8);
+        let oz = (r00 * A1 - r10 * A0) + (r01 * A4 - r11 * A3) + (r02 * A7 - r12 * A6);
+        const den = 1 / (Math.abs(r00 * A0 + r10 * A1 + r20 * A2 + r01 * A3 + r11 * A4 + r21 * A5 + r02 * A6 + r12 * A7 + r22 * A8) + 1e-12);
+        ox *= den; oy *= den; oz *= den;
+        const ang = Math.sqrt(ox * ox + oy * oy + oz * oz);
+        if (ang < 1e-9) continue;
+        const s = Math.sin(ang * 0.5) / ang, co = Math.cos(ang * 0.5), ax = ox * s, ay = oy * s, az = oz * s;
+        const nx = co * qx + ax * qw + ay * qz - az * qy, ny = co * qy - ax * qz + ay * qw + az * qx;
+        const nz = co * qz + ax * qy - ay * qx + az * qw, nw = co * qw - ax * qx - ay * qy - az * qz;
+        const il = 1 / Math.sqrt(nx * nx + ny * ny + nz * nz + nw * nw);
+        qx = nx * il; qy = ny * il; qz = nz * il; qw = nw * il;
+      }
+      Q[4 * c] = qx; Q[4 * c + 1] = qy; Q[4 * c + 2] = qz; Q[4 * c + 3] = qw;
+      const k = cellW[c] / (cellW[c] + aBase / stiff[c]);
+      for (let q = 0; q < 8; q++) {
+        const p = P[q];
+        const ex = (r[p] - rx) * sc, ey = (r[p + 1] - ry) * sc, ez = (r[p + 2] - rz) * sc;
+        const gx = cxp + r00 * ex + r01 * ey + r02 * ez, gy = cyp + r10 * ex + r11 * ey + r12 * ez, gz = czp + r20 * ex + r21 * ey + r22 * ez;
+        x[p] += (gx - x[p]) * k; x[p + 1] += (gy - x[p + 1]) * k; x[p + 2] += (gz - x[p + 2]) * k;
+      }
+    }
+  }
+  solveVolumes(sdt) {
+    const T = this.lat.tets, x = this.x, w = this.w, V0 = this.tetV0, inf = this.inflate, at = this.volAlpha / (sdt * sdt);
+    for (let t = 0; t < V0.length; t++) {
+      const ia = T[4 * t], ib = T[4 * t + 1], ic = T[4 * t + 2], id = T[4 * t + 3];
+      const a = 3 * ia, b = 3 * ib, c = 3 * ic, d = 3 * id;
+      const e1x = x[b] - x[a], e1y = x[b + 1] - x[a + 1], e1z = x[b + 2] - x[a + 2];
+      const e2x = x[c] - x[a], e2y = x[c + 1] - x[a + 1], e2z = x[c + 2] - x[a + 2];
+      const e3x = x[d] - x[a], e3y = x[d + 1] - x[a + 1], e3z = x[d + 2] - x[a + 2];
+      const g1x = (e2y * e3z - e2z * e3y) / 6, g1y = (e2z * e3x - e2x * e3z) / 6, g1z = (e2x * e3y - e2y * e3x) / 6;
+      const g2x = (e3y * e1z - e3z * e1y) / 6, g2y = (e3z * e1x - e3x * e1z) / 6, g2z = (e3x * e1y - e3y * e1x) / 6;
+      const g3x = (e1y * e2z - e1z * e2y) / 6, g3y = (e1z * e2x - e1x * e2z) / 6, g3z = (e1x * e2y - e1y * e2x) / 6;
+      const g0x = -g1x - g2x - g3x, g0y = -g1y - g2y - g3y, g0z = -g1z - g2z - g3z;
+      const V = e3x * g3x + e3y * g3y + e3z * g3z;
+      const C = V - V0[t] * inf;
+      const wsum = w[ia] * (g0x * g0x + g0y * g0y + g0z * g0z) + w[ib] * (g1x * g1x + g1y * g1y + g1z * g1z) +
+        w[ic] * (g2x * g2x + g2y * g2y + g2z * g2z) + w[id] * (g3x * g3x + g3y * g3y + g3z * g3z);
+      if (wsum < 1e-14) continue;
+      const dl = -C / (wsum + at);
+      x[a] += dl * w[ia] * g0x; x[a + 1] += dl * w[ia] * g0y; x[a + 2] += dl * w[ia] * g0z;
+      x[b] += dl * w[ib] * g1x; x[b + 1] += dl * w[ib] * g1y; x[b + 2] += dl * w[ib] * g1z;
+      x[c] += dl * w[ic] * g2x; x[c + 1] += dl * w[ic] * g2y; x[c + 2] += dl * w[ic] * g2z;
+      x[d] += dl * w[id] * g3x; x[d + 1] += dl * w[id] * g3y; x[d + 2] += dl * w[id] * g3z;
+    }
+  }
+  /** Grab: XPBD attachments of several particles to offsets around a target. */
+  startGrab(point, radius) {
+    const list = [], x = this.x;
+    for (let i = 0; i < this.n; i++) {
+      const d = Math.hypot(x[3 * i] - point[0], x[3 * i + 1] - point[1], x[3 * i + 2] - point[2]);
+      if (d < radius) list.push({ i, off: [x[3 * i] - point[0], x[3 * i + 1] - point[1], x[3 * i + 2] - point[2]], k: 1 - d / radius });
+    }
+    if (!list.length) return false;
+    this.grab = { list, target: point.slice() };
+    return true;
+  }
+  solveGrab(sdt) {
+    const { list, target } = this.grab, x = this.x, alpha = this.cfg.grabCompliance / (sdt * sdt);
+    for (const g of list) {
+      const p = 3 * g.i, k = (this.w[g.i] / (this.w[g.i] + alpha)) * (0.35 + 0.65 * g.k);
+      for (let a = 0; a < 3; a++) x[p + a] += (target[a] + g.off[a] - x[p + a]) * k;
+    }
+  }
+  collide(env) {
+    const x = this.x, xp = this.xp, off = this.lat.surfOff, b = env.bounds, mu = env.friction;
+    let contacts = 0;
+    for (let i = 0; i < this.n; i++) {
+      const p = 3 * i, o = off[i] * 0.9;
+      if (x[p + 1] < b.min[1] - o) {
+        x[p + 1] = b.min[1] - o; contacts++;
+        x[p] = xp[p] + (x[p] - xp[p]) * (1 - mu); x[p + 2] = xp[p + 2] + (x[p + 2] - xp[p + 2]) * (1 - mu);
+      } else if (x[p + 1] > b.max[1] + o) x[p + 1] = b.max[1] + o;
+      if (x[p] < b.min[0] - o) x[p] = b.min[0] - o; else if (x[p] > b.max[0] + o) x[p] = b.max[0] + o;
+      if (x[p + 2] < b.min[2] - o) x[p + 2] = b.min[2] - o; else if (x[p + 2] > b.max[2] + o) x[p + 2] = b.max[2] + o;
+    }
+    this.contacts = contacts;
+  }
+  /** Global body frame via whole-body shape matching (centre, rotation, ω). */
+  computeFrame(dt) {
+    const x = this.x, v = this.v, m = this.mass, rest = this.lat.rest, rc = this.restCom, F = this.frame;
+    let cx = 0, cy = 0, cz = 0, vx = 0, vy = 0, vz = 0;
+    for (let i = 0; i < this.n; i++) {
+      cx += x[3 * i] * m[i]; cy += x[3 * i + 1] * m[i]; cz += x[3 * i + 2] * m[i];
+      vx += v[3 * i] * m[i]; vy += v[3 * i + 1] * m[i]; vz += v[3 * i + 2] * m[i];
+    }
+    const A = new Float64Array(9);
+    for (let i = 0; i < this.n; i++) {
+      const dx = x[3 * i] - cx, dy = x[3 * i + 1] - cy, dz = x[3 * i + 2] - cz;
+      const ex = rest[3 * i] - rc[0], ey = rest[3 * i + 1] - rc[1], ez = rest[3 * i + 2] - rc[2];
+      A[0] += m[i] * dx * ex; A[1] += m[i] * dy * ex; A[2] += m[i] * dz * ex;
+      A[3] += m[i] * dx * ey; A[4] += m[i] * dy * ey; A[5] += m[i] * dz * ey;
+      A[6] += m[i] * dx * ez; A[7] += m[i] * dy * ez; A[8] += m[i] * dz * ez;
+    }
+    const q0 = Array.from(F.q);
+    extractRotation(A, F.q, 0, 8);
+    quatToMat3(F.q, F.R);
+    // ω from quaternion change: dq = q * conj(q0)
+    const q = F.q, cx0 = -q0[0], cy0 = -q0[1], cz0 = -q0[2], cw0 = q0[3];
+    let dxq = q[3] * cx0 + q[0] * cw0 + q[1] * cz0 - q[2] * cy0;
+    let dyq = q[3] * cy0 - q[0] * cz0 + q[1] * cw0 + q[2] * cx0;
+    let dzq = q[3] * cz0 + q[0] * cy0 - q[1] * cx0 + q[2] * cw0;
+    let dwq = q[3] * cw0 - q[0] * cx0 - q[1] * cy0 - q[2] * cz0;
+    if (dwq < 0) { dxq = -dxq; dyq = -dyq; dzq = -dzq; dwq = -dwq; }
+    const sl = Math.hypot(dxq, dyq, dzq), ang = 2 * Math.atan2(sl, dwq), k = sl > 1e-9 ? ang / sl / dt : 0;
+    F.omega = [dxq * k, dyq * k, dzq * k];
+    F.c = [cx, cy, cz]; F.v = [vx, vy, vz]; F.speed = Math.hypot(vx, vy, vz);
+    F.f = [F.R[0], F.R[1], F.R[2]]; F.u = [F.R[3], F.R[4], F.R[5]]; F.l = [F.R[6], F.R[7], F.R[8]];
+  }
+}
+
+
+/* ---------- 4. Locomotion capabilities --------------------------------- */
+/**
+ * A locomotion capability turns a behaviour "intent" into (a) a posed rest
+ * shape for the lattice (active muscles: shape matching pulls the body toward
+ * it) and (b) velocity-level forces (thrust, torques, drag). Species pick one
+ * by name and tune it through their definition.
+ */
+const Locomotion = {
+  registry: {},
+  register(type, factory) { this.registry[type] = factory; },
+  create(type, creature, cfg) {
+    const f = this.registry[type];
+    if (!f) throw new Error(`Unknown locomotion capability "${type}"`);
+    return f(creature, cfg);
+  },
+};
+
+/** Shared helper: distribute an angular acceleration α about c as particle velocity change. */
+function applySpin(sim, alpha, sdt) {
+  const x = sim.x, v = sim.v, c = sim.frame.c, ax = alpha[0] * sdt, ay = alpha[1] * sdt, az = alpha[2] * sdt;
+  for (let p = 0; p < x.length; p += 3) {
+    const rx = x[p] - c[0], ry = x[p + 1] - c[1], rz = x[p + 2] - c[2];
+    v[p] += ay * rz - az * ry; v[p + 1] += az * rx - ax * rz; v[p + 2] += ax * ry - ay * rx;
+  }
+}
+
+/** Keep a target point inside the environment bounds. */
+function clampToBounds(p, b, m) {
+  return [clamp(p[0], b.min[0] + m, b.max[0] - m), clamp(p[1], b.min[1] + m * 0.4, b.max[1] - m * 0.6), clamp(p[2], b.min[2] + m, b.max[2] - m)];
+}
+
+/**
+ * SWIM — travelling-wave undulation along a spine (+x = head in rest space).
+ * Thrust is partly emergent (anisotropic drag on the undulating lattice) and
+ * partly an explicit propulsive force scaled by beat frequency.
+ */
+Locomotion.register('swim', (creature, cfg) => {
+  const sim = creature.sim, n = sim.n, rest = sim.lat.rest, env = creature.env;
+  const L = cfg.length, headX = cfg.headX, NS = 48, ds = L / (NS - 1);
+  const sx = new Float64Array(NS), sz = new Float64Array(NS), th = new Float64Array(NS), pCos = new Float64Array(n), pSin = new Float64Array(n);
+  const params = { beat: 1 };
+  let phase = 0, freq = cfg.baseFreq, bend = 0, headYaw = 0, wrig = 0, wrigPhase = 0, amp = 1, time = 0;
+  const ctrl = { alpha: [0, 0, 0], thrust: [0, 0, 0] };
+  const k = (2 * Math.PI) / (cfg.waveLength * L);
+  return {
+    params,
+    defaultIntent: () => ({ target: null, speed: 0.6, beat: 1, amplitude: 1, turnBend: 1, headYaw: 0, wriggle: 0 }),
+    pose(dt, intent, posed) {
+      time += dt;
+      const tf = cfg.baseFreq * params.beat * intent.beat;
+      freq += (tf - freq) * damp(4, dt);
+      phase += 2 * Math.PI * freq * dt;
+      amp += (intent.amplitude - amp) * damp(5, dt);
+      headYaw += (intent.headYaw - headYaw) * damp(7, dt);
+      wrig += (intent.wriggle - wrig) * damp(8, dt);
+      wrigPhase += 2 * Math.PI * cfg.wriggleFreq * dt;
+      let x = headX, z = 0;
+      for (let i = 0; i < NS; i++) {
+        const s = i * ds, sig = s / L;
+        const A = (cfg.amp[0] + cfg.amp[1] * sig + cfg.amp[2] * sig * sig) * amp;
+        let t = A * Math.sin(phase - k * s);
+        t -= bend * cfg.turnBend * sig;
+        t += headYaw * (1 - smoothstep(0, cfg.neck, s));
+        t += wrig * cfg.wriggleAmp * Math.sin(wrigPhase - 9 * sig) * (0.35 + sig);
+        th[i] = t;
+        if (i > 0) { const tm = 0.5 * (th[i] + th[i - 1]); x -= Math.cos(tm) * ds; z += Math.sin(tm) * ds; }
+        sx[i] = x; sz[i] = z;
+      }
+      for (let p = 0; p < n; p++) {
+        const rx = rest[3 * p], ry = rest[3 * p + 1], rz = rest[3 * p + 2];
+        const s = headX - rx, sc = clamp(s, 0, L), f = (sc / L) * (NS - 1), i0 = Math.min(Math.floor(f), NS - 2), a = f - i0;
+        const X = sx[i0] + (sx[i0 + 1] - sx[i0]) * a, Z = sz[i0] + (sz[i0 + 1] - sz[i0]) * a, T = th[i0] + (th[i0 + 1] - th[i0]) * a;
+        const c = Math.cos(T), sn = Math.sin(T), e = s - sc;
+        posed[3 * p] = X + rz * sn - e * c;
+        posed[3 * p + 1] = ry;
+        posed[3 * p + 2] = Z + rz * c + e * sn;
+        pCos[p] = c; pSin[p] = sn;
+      }
+    },
+    control(dt, intent) {
+      const F = sim.frame, f = F.f, u = F.u, l = F.l, c = F.c, w = F.omega;
+      const head = [c[0] + f[0] * cfg.headOffset, c[1] + f[1] * cfg.headOffset, c[2] + f[2] * cfg.headOffset];
+      const tgt = clampToBounds(intent.target || v3.add(head, v3.scale(f, 2)), env.bounds, cfg.wallMargin);
+      const to = v3.sub(tgt, head), dh = Math.hypot(to[0], to[2]);
+      const err = dh > 0.05 ? wrapAngle(Math.atan2(-to[2], to[0]) - Math.atan2(-f[2], f[0])) : 0;
+      const ay = clamp(cfg.turnGain * err - cfg.turnDamp * w[1], -cfg.maxTurn, cfg.maxTurn);
+      bend += (clamp(err * 1.1, -1, 1) * intent.turnBend - bend) * damp(3, dt);
+      const pitch = Math.asin(clamp(f[1], -1, 1));
+      const pitchDes = clamp(Math.atan2(to[1], Math.max(dh, 0.5)), -cfg.maxPitch, cfg.maxPitch);
+      const ap = cfg.pitchGain * (pitchDes - pitch) - cfg.pitchDamp * v3.dot(w, l);
+      const rollAxis = v3.cross(u, [0, 1, 0]);
+      const ar = cfg.rollGain * v3.dot(rollAxis, f) - cfg.rollDamp * v3.dot(w, f);
+      ctrl.alpha = [l[0] * ap + f[0] * ar, ay + l[1] * ap + f[1] * ar, l[2] * ap + f[2] * ar];
+      // Thrust grows with beat frequency and eases off while the target is off-axis, tightening turns.
+      const th0 = cfg.thrust * intent.speed * Math.sqrt(freq / cfg.baseFreq) * clamp(0.35 + 0.65 * Math.cos(err), 0.15, 1);
+      // Pectoral lift / buoyancy trim: a bounded vertical force toward the target depth.
+      const lift = clamp((tgt[1] - c[1]) * cfg.liftGain - F.v[1] * cfg.liftDamp, -cfg.maxLift, cfg.maxLift);
+      ctrl.thrust = [f[0] * th0, f[1] * th0 + lift, f[2] * th0];
+    },
+    applyForces(sdt) {
+      const x = sim.x, v = sim.v, F = sim.frame, f = F.f, u = F.u, l = F.l, T = ctrl.thrust, c0 = F.c;
+      const wx = ctrl.alpha[0] * sdt, wy = ctrl.alpha[1] * sdt, wz = ctrl.alpha[2] * sdt;
+      const ct = 1 - 1 / (1 + cfg.drag[0] * sdt), cn = 1 - 1 / (1 + cfg.drag[1] * sdt), cu = 1 - 1 / (1 + cfg.drag[2] * sdt);
+      for (let p = 0; p < n; p++) {
+        const i = 3 * p;
+        const rx = x[i] - c0[0], ry = x[i + 1] - c0[1], rz = x[i + 2] - c0[2];
+        v[i] += T[0] * sdt + wy * rz - wz * ry; v[i + 1] += T[1] * sdt + wz * rx - wx * rz; v[i + 2] += T[2] * sdt + wx * ry - wy * rx;
+        const cs = pCos[p], sn = pSin[p];
+        const tx = f[0] * cs - l[0] * sn, ty = f[1] * cs - l[1] * sn, tz = f[2] * cs - l[2] * sn;
+        const nx = f[0] * sn + l[0] * cs, ny = f[1] * sn + l[1] * cs, nz = f[2] * sn + l[2] * cs;
+        const vt = (v[i] * tx + v[i + 1] * ty + v[i + 2] * tz) * ct;
+        const vn = (v[i] * nx + v[i + 1] * ny + v[i + 2] * nz) * cn;
+        const vu = (v[i] * u[0] + v[i + 1] * u[1] + v[i + 2] * u[2]) * cu;
+        v[i] -= tx * vt + nx * vn + u[0] * vu; v[i + 1] -= ty * vt + ny * vn + u[1] * vu; v[i + 2] -= tz * vt + nz * vn + u[2] * vu;
+      }
+    },
+    readouts: { get beatsPerMinute() { return freq * 60; }, get speed() { return sim.frame.speed; } },
+    reset() { phase = 0; freq = cfg.baseFreq; bend = 0; headYaw = 0; wrig = 0; amp = 1; },
+  };
+});
+
+/**
+ * HOP — ground locomotion with crouch / launch / flight / landing phases.
+ * Squash-and-stretch is posed into the lattice rest shape; the jump itself is
+ * a ballistic impulse under gravity, and floppy parts react physically.
+ */
+Locomotion.register('hop', (creature, cfg) => {
+  const sim = creature.sim, n = sim.n, rest = sim.lat.rest, env = creature.env;
+  const params = { hopHeight: 1 };
+  let phase = 'ground', timer = 0, crouch = 0, air = 0, cooldown = 0.5, hops = 0, sniffPh = 0, twist = 0, impulse = null;
+  let alpha = [0, 0, 0], plannedScale = 1;
+  const com = sim.restCom;
+  return {
+    params,
+    defaultIntent: () => ({ target: null, hop: false, hopNow: false, hopScale: 1, sniff: 0, twist: 0, crouch: 0, turn: true }),
+    pose(dt, intent, posed) {
+      const cTarget = phase === 'crouch' ? 1 : intent.crouch;
+      crouch += (cTarget - crouch) * damp(phase === 'crouch' ? 18 : 6, dt);
+      const stretch = phase === 'air' ? Math.max(0, 1 - air * 2.2) : 0;
+      twist += ((phase === 'air' ? intent.twist : 0) - twist) * damp(10, dt);
+      sniffPh += dt * 2 * Math.PI * 7;
+      const sy = 1 - cfg.squash * crouch + cfg.stretch * stretch, sxz = 1 + cfg.squash * 0.45 * crouch - cfg.stretch * 0.3 * stretch;
+      for (let p = 0; p < n; p++) {
+        const rx = rest[3 * p], ry = rest[3 * p + 1], rz = rest[3 * p + 2];
+        let x = com[0] + (rx - com[0]) * sxz, y = cfg.groundY + (ry - cfg.groundY) * sy, z = com[2] + (rz - com[2]) * sxz;
+        const hw = smoothstep(cfg.headX - 0.05, cfg.headX + 0.12, rx);
+        y += Math.sin(sniffPh) * 0.012 * intent.sniff * hw;
+        const tw = twist * 0.55 * smoothstep(com[0] + 0.05, com[0] - 0.3, rx);
+        if (tw !== 0) { const c = Math.cos(tw), s = Math.sin(tw), yy = y - com[1]; y = com[1] + yy * c - z * s; z = yy * s + z * c; }
+        posed[3 * p] = x; posed[3 * p + 1] = y; posed[3 * p + 2] = z;
+      }
+    },
+    control(dt, intent) {
+      const F = sim.frame, f = F.f, u = F.u, c = F.c, w = F.omega, g = Math.abs(env.cfg.gravity) * (1 - env.cfg.buoyancy);
+      const grounded = sim.contacts > 0;
+      cooldown -= dt;
+      const tgt = intent.target ? clampToBounds(intent.target, env.bounds, cfg.wallMargin) : null;
+      const to = tgt ? v3.sub(tgt, c) : [f[0], 0, f[2]], dh = Math.hypot(to[0], to[2]);
+      const err = dh > 0.05 ? wrapAngle(Math.atan2(-to[2], to[0]) - Math.atan2(-f[2], f[0])) : 0;
+      const ay = grounded && intent.turn ? clamp(cfg.turnGain * err - cfg.turnDamp * w[1], -cfg.maxTurn, cfg.maxTurn) : -w[1] * 0.5;
+      const rollAxis = v3.cross(u, [0, 1, 0]);
+      alpha = [rollAxis[0] * cfg.uprightGain - (w[0]) * cfg.uprightDamp, ay, rollAxis[2] * cfg.uprightGain - (w[2]) * cfg.uprightDamp];
+      if (phase === 'ground') {
+        const wants = intent.hopNow || (intent.hop && tgt && dh > 0.3);
+        if (grounded && wants && cooldown <= 0 && (intent.hopNow || Math.abs(err) < 0.6)) { phase = 'crouch'; timer = cfg.crouchTime; plannedScale = intent.hopScale; }
+      } else if (phase === 'crouch') {
+        timer -= dt;
+        if (timer <= 0) {
+          const h = cfg.hopHeight * params.hopHeight * plannedScale, vy = Math.sqrt(2 * g * h), tAir = (2 * vy) / g;
+          const dist = Math.min(tgt ? dh : cfg.hopDistance, cfg.hopDistance * plannedScale), hs = dist / tAir;
+          const dir = v3.norm([f[0], 0, f[2]]);
+          impulse = [dir[0] * hs, vy, dir[2] * hs]; phase = 'air'; air = 0; hops++;
+        }
+      } else if (phase === 'air') {
+        air += dt;
+        if (grounded && air > 0.15) { phase = 'ground'; cooldown = cfg.cooldown; }
+        if (air > 3) phase = 'ground';
+      }
+    },
+    applyForces(sdt, s) {
+      applySpin(sim, alpha, sdt);
+      if (impulse && s === 0) {
+        const v = sim.v;
+        for (let p = 0; p < v.length; p += 3) { v[p] += impulse[0]; v[p + 1] += impulse[1]; v[p + 2] += impulse[2]; }
+        impulse = null;
+      }
+    },
+    readouts: { get hops() { return hops; }, get phase() { return phase; }, get airborne() { return phase === 'air'; } },
+    reset() { phase = 'ground'; timer = 0; crouch = 0; cooldown = 0.5; hops = 0; impulse = null; },
+  };
+});
+
+/* ---------- 5. Behaviour engine ---------------------------------------- */
+/**
+ * Prioritised finite-state machine. Each state declares its kind
+ * (autonomous | user | reactive | environment), priority, whether it can be
+ * interrupted, whether it resumes after an interruption, and optional
+ * enter / update / exit / trigger / retrigger hooks. States write into the
+ * per-tick `ctx.intent`, which locomotion and expression systems consume.
+ */
+class BehaviorMachine {
+  constructor(def, ctx) {
+    this.def = def; this.ctx = ctx; this.stack = []; this.history = [];
+    this.ids = Object.keys(def.states);
+    this.triggered = this.ids.filter((id) => def.states[id].trigger).sort((a, b) => def.states[b].priority - def.states[a].priority);
+    this.current = null;
+    this.enter(def.initial, null, 'start');
+  }
+  get state() { return this.current; }
+  label(id = this.current.id) { return this.def.states[id].label || id; }
+  canPreempt(def) {
+    const cur = this.current.def;
+    if (cur.interruptible === false && def.priority <= (cur.lockPriority ?? 99)) return false;
+    return def.priority > cur.priority;
+  }
+  enter(id, payload, reason) {
+    const def = this.def.states[id];
+    if (!def) throw new Error(`Unknown behaviour "${id}"`);
+    const prev = this.current;
+    if (prev) {
+      if (prev.def.resumable && reason !== 'next' && reason !== 'done') {
+        this.stack = this.stack.filter((s) => s.id !== prev.id);
+        this.stack.push(prev);
+        if (this.stack.length > 4) { const old = this.stack.shift(); old.def.exit?.(this.ctx, old.data); }
+      } else prev.def.exit?.(this.ctx, prev.data);
+    }
+    this.stack = this.stack.filter((s) => s.id !== id);
+    this.current = { id, def, data: {}, time: 0 };
+    this.history.unshift({ id, reason, t: this.ctx.time });
+    if (this.history.length > 8) this.history.pop();
+    def.enter?.(this.ctx, this.current.data, payload);
+    return true;
+  }
+  /** User-triggered request (buttons). */
+  request(id, payload) {
+    if (this.current.id === id) { this.current.def.retrigger?.(this.ctx, this.current.data, payload); return true; }
+    if (!this.canPreempt(this.def.states[id])) return false;
+    return this.enter(id, payload, 'user');
+  }
+  /** Reactive event (touch, grab, comb). Re-triggering an active reaction extends it. */
+  react(id, payload) {
+    if (this.current.id === id) { this.current.def.retrigger?.(this.ctx, this.current.data, payload); return true; }
+    if (!this.canPreempt(this.def.states[id])) return false;
+    return this.enter(id, payload, 'reaction');
+  }
+  cancel(id) {
+    this.stack = this.stack.filter((s) => s.id !== id);
+    if (this.current.id === id) this.finish(null);
+  }
+  finish(next) {
+    const cur = this.current;
+    cur.def.exit?.(this.ctx, cur.data);
+    this.current = null;
+    if (next) { this.enterFresh(next.id, next.payload, 'next'); return; }
+    if (this.stack.length) {
+      this.current = this.stack.pop();
+      this.history.unshift({ id: this.current.id, reason: 'resume', t: this.ctx.time });
+      this.current.def.resume?.(this.ctx, this.current.data);
+    } else this.enterFresh(this.def.initial, null, 'done');
+  }
+  enterFresh(id, payload, reason) { this.current = null; this.enter(id, payload, reason); }
+  tick(dt) {
+    const ctx = this.ctx;
+    for (const id of this.triggered) {
+      const d = this.def.states[id];
+      if (id === this.current.id || this.stack.some((s) => s.id === id)) continue;
+      if (this.canPreempt(d) && d.trigger(ctx)) { this.enter(id, null, d.kind); break; }
+    }
+    const cur = this.current;
+    cur.time += dt;
+    let r = cur.def.update ? cur.def.update(ctx, cur.data, dt, cur.time) : undefined;
+    if (r === undefined && cur.def.duration && cur.time >= cur.def.duration) r = 'done';
+    if (r === 'done') this.finish(null);
+    else if (r && r.next) this.finish({ id: r.next, payload: r.payload });
+  }
+  reset() { this.stack = []; this.history = []; this.current = null; this.enter(this.def.initial, null, 'reset'); }
+}
+
+/* ---------- 6. Environment & props ------------------------------------- */
+/** Environment presets are engine-level; species choose one and may override fields. */
+const ENVIRONMENTS = {
+  tank: { label: 'Studio tank', medium: 'water', gravity: -28, buoyancy: 1, friction: 0.15, floorPattern: 'caustics',
+    bounds: { min: [-3.4, 0, -2.5], max: [3.4, 2.6, 2.5] }, background: '#d8d2c8', floor: '#cdc3b1', fadeRadius: 11 },
+  studio: { label: 'Felt studio', medium: 'air', gravity: -28, buoyancy: 0, friction: 0.55, floorPattern: 'felt',
+    bounds: { min: [-3, 0, -2.2], max: [3, 3.4, 2.2] }, background: '#d9d3ca', floor: '#c9bfae', fadeRadius: 10 },
+};
+
+class Environment {
+  constructor(cfg, itemDefs, rng) {
+    this.cfg = cfg; this.itemDefs = itemDefs || {}; this.rng = rng;
+    this.bounds = cfg.bounds; this.friction = cfg.friction; this.items = []; this.nextId = 1; this.time = 0;
+    const self = this;
+    this.api = {
+      get bounds() { return self.bounds; },
+      get floorY() { return self.bounds.min[1]; },
+      get medium() { return self.cfg.medium; },
+      items: (type) => self.items.filter((it) => it.state === 'active' && (!type || it.type === type)),
+      count: (type) => self.items.filter((it) => !type || it.type === type).length,
+      spawn: (type, opts) => self.spawn(type, opts),
+      nearest: (type, p) => {
+        let best = null, bd = Infinity;
+        for (const it of self.items) if (it.type === type && it.state === 'active') {
+          const d = v3.dist(it.pos, p); if (d < bd) { bd = d; best = it; }
+        }
+        return best;
+      },
+      attract: (it, p, rate, dt) => { const k = damp(rate, dt); for (let a = 0; a < 3; a++) it.pos[a] += (p[a] - it.pos[a]) * k; it.vel = [0, 0, 0]; },
+      consume: (it, p) => { it.state = 'consumed'; it.sink = p.slice(); },
+      randomPoint: (margin = 0.8, yRange = [0.4, 0.8]) => {
+        const b = self.bounds, r = self.rng;
+        return [lerp(b.min[0] + margin, b.max[0] - margin, r()), lerp(b.min[1], b.max[1], lerp(yRange[0], yRange[1], r())),
+          lerp(b.min[2] + margin, b.max[2] - margin, r())];
+      },
+      get center() { const b = self.bounds; return [(b.min[0] + b.max[0]) / 2, (b.min[1] + b.max[1]) / 2, (b.min[2] + b.max[2]) / 2]; },
+    };
+  }
+  spawn(type, opts = {}) {
+    const def = this.itemDefs[type];
+    if (!def) throw new Error(`Unknown item type "${type}"`);
+    const it = { id: this.nextId++, type, def, pos: (opts.pos || this.api.randomPoint(1.0, [0.85, 0.9])).slice(), vel: [0, 0, 0],
+      yaw: this.rng() * Math.PI * 2, spin: (this.rng() - 0.5) * 2, t: 0, scale: 1, state: 'active' };
+    this.items.push(it);
+    return it;
+  }
+  step(dt) {
+    this.time += dt;
+    const g = this.cfg.gravity, floor = this.bounds.min[1];
+    for (const it of this.items) {
+      it.t += dt;
+      if (it.state === 'consumed') {
+        for (let a = 0; a < 3; a++) it.pos[a] += (it.sink[a] - it.pos[a]) * damp(14, dt);
+        it.scale -= dt * 5;
+        continue;
+      }
+      const b = this.cfg.medium === 'water' ? it.def.buoyancy : 0;
+      it.vel[1] += g * (1 - b) * dt;
+      const drag = this.cfg.medium === 'water' ? it.def.drag : 0.1;
+      for (let a = 0; a < 3; a++) it.vel[a] *= Math.exp(-drag * dt);
+      it.vel[0] += Math.sin(it.t * 3.1 + it.id) * dt * 0.4 * (it.pos[1] > floor + it.def.radius + 0.05 ? 1 : 0);
+      for (let a = 0; a < 3; a++) it.pos[a] += it.vel[a] * dt;
+      if (it.pos[1] < floor + it.def.radius) { it.pos[1] = floor + it.def.radius; it.vel[1] = 0; it.vel[0] *= 0.8; it.vel[2] *= 0.8; it.landed = true; }
+      if (!it.landed) it.yaw += it.spin * dt;
+    }
+    this.items = this.items.filter((it) => it.scale > 0);
+  }
+  clear() { this.items = []; }
+  /** Model matrix for an item (yaw, flutter tilt, uniform scale). */
+  itemMatrix(it) {
+    const s = Math.max(it.scale, 0) * (it.def.scale || 1), cy = Math.cos(it.yaw), sy = Math.sin(it.yaw);
+    const tilt = it.landed ? 0.0 : Math.sin(it.t * 4 + it.id) * 0.35, ct = Math.cos(tilt), st = Math.sin(tilt);
+    // R = Ry(yaw) * Rx(tilt)
+    return new Float32Array([cy * s, 0, -sy * s, 0, sy * st * s, ct * s, cy * st * s, 0, sy * ct * s, -st * s, cy * ct * s, 0,
+      it.pos[0], it.pos[1], it.pos[2], 1]);
+  }
+}
+
+
+/* ---------- 7. Material & fur system ----------------------------------- */
+const MATERIAL_TYPES = { plush: 0, felt: 1, glass: 2, embroidery: 3, stitch: 4 };
+const MATERIAL_DEFAULTS = {
+  plush: { fur: 1, sheen: 0.6, gloss: 0 },
+  felt: { fur: 0, sheen: 0.3, gloss: 0 },
+  glass: { fur: 0, sheen: 0, gloss: 1 },
+  embroidery: { fur: 0, sheen: 0.15, gloss: 0.45 },
+  stitch: { fur: 0, sheen: 0.1, gloss: 0.3 },
+};
+const MAX_REGIONS = 16, MAX_DECALS = 128, MAX_GROUPS = 32, MAX_ATTACH = 4, MAX_SPOTS = 4;
+
+/** Region table (16 × 8 floats) for a fabric preset: colour, type, fur multiplier, sheen, gloss. */
+function buildMaterialTable(def, presetId) {
+  const regions = def.materials.regions, names = Object.keys(regions);
+  const preset = def.materials.presets.find((p) => p.id === presetId) || def.materials.presets[0];
+  const out = new Float32Array(MAX_REGIONS * 8);
+  names.forEach((name, i) => {
+    const r = regions[name], base = MATERIAL_DEFAULTS[r.type];
+    const col = hexToLinear(preset.colors[name] || '#ff00ff');
+    out.set([col[0], col[1], col[2], MATERIAL_TYPES[r.type], r.fur ?? base.fur, r.sheen ?? base.sheen, r.gloss ?? base.gloss, 0], i * 8);
+  });
+  return out;
+}
+
+/* ---------- 8. Asset building: anatomy → meshes, lattice, embeddings ---- */
+/**
+ * Converts a species' procedural anatomy into GPU-ready geometry (separate
+ * from simulation state, so it can be cached and re-used across resets).
+ */
+function buildCreatureAssets(def) {
+  const A = def.anatomy, t0 = performance.now();
+  const regionNames = Object.keys(def.materials.regions);
+  const regionIndex = (name) => {
+    const i = regionNames.indexOf(name);
+    if (i < 0) throw new Error(`Region "${name}" is not declared in materials.regions`);
+    return i;
+  };
+  const parts = A.parts.map((part) => {
+    const mesh = surfaceNets(part.sdf, part.bounds.min, part.bounds.max, part.resolution);
+    const P = mesh.positions, nv = P.length / 3, r0 = new Uint32Array(nv);
+    // Output vertices reference a mesh vertex (src) and carry a region pair + signed boundary field.
+    const src = [], reg = [], field = [], I = Array.from(mesh.indices);
+    for (let v = 0; v < nv; v++) { r0[v] = regionIndex(part.region(P[3 * v], P[3 * v + 1], P[3 * v + 2])); src.push(v); reg.push(r0[v] | (r0[v] << 8)); field.push(1); }
+    // Triangles straddling a species boundary get private vertex copies holding that boundary's
+    // field, so the fragment shader can resolve the seam exactly inside the triangle.
+    const bds = part.boundaries || [], pick = (r, x, y, z) => regionIndex(typeof r === 'function' ? r(x, y, z) : r);
+    if (bds.length) for (let t = 0; t < I.length; t += 3) {
+      const ia = I[t], ib = I[t + 1], ic = I[t + 2];
+      const cx = (P[3 * ia] + P[3 * ib] + P[3 * ic]) / 3, cy = (P[3 * ia + 1] + P[3 * ib + 1] + P[3 * ic + 1]) / 3, cz = (P[3 * ia + 2] + P[3 * ib + 2] + P[3 * ic + 2]) / 3;
+      let best = null, score = 1;
+      for (const bd of bds) {
+        if (bd.where && !bd.where(cx, cy, cz)) continue;
+        const sc = Math.abs(bd.field(cx, cy, cz)) / (bd.band ?? 0.05);
+        if (sc < score) { score = sc; best = bd; }
+      }
+      if (!best) continue;
+      const f3 = [ia, ib, ic].map((v) => best.field(P[3 * v], P[3 * v + 1], P[3 * v + 2]));
+      const crosses = !((f3[0] >= 0) === (f3[1] >= 0) && (f3[1] >= 0) === (f3[2] >= 0));
+      if (!crosses && r0[ia] === r0[ib] && r0[ib] === r0[ic]) continue;
+      const packed = pick(best.positive, cx, cy, cz) | (pick(best.negative, cx, cy, cz) << 8);
+      [ia, ib, ic].forEach((v, k) => { I[t + k] = src.length; src.push(v); reg.push(packed); field.push(f3[k]); });
+    }
+    return { part, mesh, src, reg, field, indices: I };
+  });
+  // Lattice from all lattice-skinned parts.
+  const latticeParts = parts.filter((p) => !p.part.attach);
+  const latVerts = new Float32Array(latticeParts.reduce((s, p) => s + p.mesh.positions.length, 0));
+  let off = 0;
+  for (const p of latticeParts) { latVerts.set(p.mesh.positions, off); off += p.mesh.positions.length; }
+  const physSdf = A.physicsSdf || latticeParts[0].part.sdf;
+  const lattice = buildLattice(physSdf, latVerts, def.physics.latticeSpacing, def.physics.stuffingAt);
+  // Articulated joints & rigid attachments (anchor frame read from the lattice).
+  const joints = Object.entries(A.joints || {}).map(([id, j]) => ({ id, ...j }));
+  const attachments = [];
+  for (const p of parts) if (p.part.attach) {
+    const key = `${p.part.attach.anchor}|${p.part.attach.joint || ''}`;
+    let k = attachments.findIndex((a) => a.key === key);
+    if (k < 0) {
+      const anchor = A.anchors[p.part.attach.anchor];
+      attachments.push({ key, anchor, joint: p.part.attach.joint ? joints.findIndex((j) => j.id === p.part.attach.joint) : -1, emb: lattice.embed(...anchor) });
+      k = attachments.length - 1;
+    }
+    p.attachIndex = k + 1;
+  }
+  // Decals (embroidery / stitches) flattened to capsule segments grouped spatially.
+  const decalSpecs = A.decals ? A.decals({ surfacePoint, sdf: physSdf, v3 }) : [];
+  const groupNames = [], segs = [];
+  for (const d of decalSpecs) {
+    let g = groupNames.indexOf(d.group);
+    if (g < 0) { groupNames.push(d.group); g = groupNames.length - 1; }
+    let along = 0;
+    for (let i = 0; i + 1 < d.points.length; i++) {
+      const a = d.points[i], b = d.points[i + 1];
+      segs.push({ g, a, b, width: d.width, region: regionIndex(d.region), dash: d.dash || null, cuts: d.cutsFur !== false ? 1 : 0, along });
+      along += v3.dist(a, b);
+    }
+  }
+  segs.sort((s, t) => s.g - t.g);
+  if (segs.length > MAX_DECALS) throw new Error(`Too many decal segments (${segs.length} > ${MAX_DECALS})`);
+  if (groupNames.length > MAX_GROUPS) throw new Error('Too many decal groups');
+  const groups = groupNames.map((_, g) => {
+    const list = segs.filter((s) => s.g === g), start = segs.indexOf(list[0]);
+    const mn = [Infinity, Infinity, Infinity], mx = [-Infinity, -Infinity, -Infinity];
+    for (const s of list) for (const p of [s.a, s.b]) for (let a = 0; a < 3; a++) { mn[a] = Math.min(mn[a], p[a] - s.width); mx[a] = Math.max(mx[a], p[a] + s.width); }
+    return { start, count: list.length, mn, mx, list };
+  });
+  const segDist2 = (p, a, b) => {
+    const abx = b[0] - a[0], aby = b[1] - a[1], abz = b[2] - a[2];
+    const t = clamp(((p[0] - a[0]) * abx + (p[1] - a[1]) * aby + (p[2] - a[2]) * abz) / (abx * abx + aby * aby + abz * abz + 1e-12), 0, 1);
+    return (p[0] - a[0] - abx * t) ** 2 + (p[1] - a[1] - aby * t) ** 2 + (p[2] - a[2] - abz * t) ** 2;
+  };
+  // Interleaved vertex buffer: restPos, restNrm, uvw, (cell, attach, regions, decalMask), furDir + boundary field — 68 bytes.
+  const total = parts.reduce((n, p) => n + p.src.length, 0);
+  const vbuf = new ArrayBuffer(total * 68), vf = new Float32Array(vbuf), vu = new Uint32Array(vbuf);
+  const furDir = new Float32Array(total * 3), restPos = new Float32Array(total * 3), restNrm = new Float32Array(total * 3);
+  const embCell = new Int32Array(total).fill(-1), embUVW = new Float32Array(total * 3);
+  const indices = [];
+  let base = 0;
+  for (const p of parts) {
+    const { positions: P, normals: N } = p.mesh, margin = p.part.resolution * 2.5;
+    for (const i of p.indices) indices.push(i + base);
+    for (let k = 0; k < p.src.length; k++) {
+      const v = p.src[k], gv = base + k, o = gv * 17, x = P[3 * v], y = P[3 * v + 1], z = P[3 * v + 2];
+      const nx = N[3 * v], ny = N[3 * v + 1], nz = N[3 * v + 2];
+      vf[o] = x; vf[o + 1] = y; vf[o + 2] = z; vf[o + 3] = nx; vf[o + 4] = ny; vf[o + 5] = nz;
+      restPos.set([x, y, z], 3 * gv); restNrm.set([nx, ny, nz], 3 * gv);
+      if (!p.part.attach) {
+        const e = lattice.embed(x, y, z);
+        vf[o + 6] = e.u; vf[o + 7] = e.v; vf[o + 8] = e.w; vu[o + 9] = e.cell; vu[o + 10] = 0;
+        embCell[gv] = e.cell; embUVW.set([e.u, e.v, e.w], 3 * gv);
+      } else { vu[o + 9] = 0; vu[o + 10] = p.attachIndex; }
+      vu[o + 11] = p.reg[k]; vf[o + 16] = p.field[k];
+      let mask = 0;
+      groups.forEach((g, gi) => {
+        if (x < g.mn[0] - margin || y < g.mn[1] - margin || z < g.mn[2] - margin || x > g.mx[0] + margin || y > g.mx[1] + margin || z > g.mx[2] + margin) return;
+        for (const s of g.list) if (segDist2([x, y, z], s.a, s.b) < (s.width + margin) ** 2) { mask |= 1 << gi; break; }
+      });
+      vu[o + 12] = mask;
+      if (def.fur && p.part.fur !== false) {
+        const d = def.fur.direction(x, y, z, nx, ny, nz), dn = d[0] * nx + d[1] * ny + d[2] * nz;
+        const t = v3.norm([d[0] - nx * dn, d[1] - ny * dn, d[2] - nz * dn]);
+        furDir.set(t, 3 * gv); vf[o + 13] = t[0]; vf[o + 14] = t[1]; vf[o + 15] = t[2];
+      }
+    }
+    base += p.src.length;
+  }
+  // Decal uniform payload.
+  const decalData = new Float32Array(MAX_DECALS * 12), groupData = new Uint32Array(MAX_GROUPS * 4);
+  segs.forEach((s, i) => decalData.set([...s.a, s.width, ...s.b, s.region, s.dash ? s.dash.period : 0, s.dash ? s.dash.duty : 1, s.cuts, s.along], i * 12));
+  groups.forEach((g, i) => groupData.set([g.start, g.count, 0, 0], i * 4));
+  // Expression spots.
+  const channels = A.expressions?.channels || [];
+  const spotData = new Float32Array(MAX_SPOTS * 8);
+  (A.expressions?.spots || []).slice(0, MAX_SPOTS).forEach((s, i) => {
+    const c = hexToLinear(s.color);
+    spotData.set([...s.center, s.radius, c[0], c[1], c[2], channels.indexOf(s.channel)], i * 8);
+  });
+  // Landmarks embedded in the lattice.
+  const landmarks = {};
+  for (const [k, p] of Object.entries(A.landmarks || {})) landmarks[k] = lattice.embed(...p);
+  // Picking list (lattice-skinned vertices) and a spatial hash for combing.
+  const pick = [];
+  for (let v = 0; v < total; v++) if (embCell[v] >= 0) pick.push(v);
+  const HC = 0.08, hash = new Map();
+  for (const v of pick) {
+    const key = `${Math.floor(restPos[3 * v] / HC)},${Math.floor(restPos[3 * v + 1] / HC)},${Math.floor(restPos[3 * v + 2] / HC)}`;
+    if (!hash.has(key)) hash.set(key, []);
+    hash.get(key).push(v);
+  }
+  // Prop meshes for environment items owned by the species.
+  const items = {};
+  for (const [id, it] of Object.entries(def.items || {})) {
+    const m = surfaceNets(it.sdf, it.bounds.min, it.bounds.max, it.resolution), nv = m.positions.length / 3;
+    const data = new Float32Array(nv * 9);
+    for (let v = 0; v < nv; v++) {
+      const c = hexToLinear(it.color(m.positions[3 * v], m.positions[3 * v + 1], m.positions[3 * v + 2]));
+      data.set([m.positions[3 * v], m.positions[3 * v + 1], m.positions[3 * v + 2], m.normals[3 * v], m.normals[3 * v + 1], m.normals[3 * v + 2], ...c], v * 9);
+    }
+    items[id] = { data, indices: m.indices };
+  }
+  return {
+    lattice, joints, attachments, vbuf, indices: new Uint32Array(indices), vertexCount: total, furDir, restPos, restNrm,
+    embCell, embUVW, decalData, groupData, decalCount: segs.length, spotData, channels, landmarks, pick, hash, HC, items,
+    regionNames, buildMs: performance.now() - t0, triangles: indices.length / 3,
+  };
+}
+
+/* ---------- 9. Interaction tools (species-agnostic) -------------------- */
+/**
+ * Tools only know how to apply generic physical effects and emit generic
+ * events (grab / release / poke / stroke / comb). What a creature *does* about
+ * an event is decided by the species' reaction rules.
+ */
+const TOOLS = {
+  hand: {
+    label: 'Hand', glyph: '✋', requires: null,
+    hint: 'Drag the plush to grab and move it. Drag empty space to orbit.',
+    begin(c, hit, ray) {
+      if (!c.sim.startGrab(hit.point, c.sim.lat.H * 1.7)) return false;
+      this.plane = { p: hit.point.slice(), n: v3.scale(ray.view, -1) };
+      c.interaction.grabbed = true; c.interaction.regions = hit.regions; c.interaction.point = hit.point;
+      c.emit('grab', { regions: hit.regions, point: hit.point });
+      return true;
+    },
+    move(c, hit, ray) {
+      const { p, n } = this.plane, den = v3.dot(ray.d, n);
+      if (Math.abs(den) < 1e-5 || !c.sim.grab) return;
+      const t = v3.dot(v3.sub(p, ray.o), n) / den, target = v3.add(ray.o, v3.scale(ray.d, t));
+      c.sim.grab.target = clampToBounds(target, c.env.bounds, 0.05);
+      c.interaction.point = c.sim.grab.target;
+    },
+    end(c) {
+      c.sim.grab = null; c.interaction.grabbed = false;
+      c.emit('release', { regions: c.interaction.regions, point: c.interaction.point });
+    },
+  },
+  finger: {
+    label: 'Finger', glyph: '☝', requires: null,
+    hint: 'Tap to poke or boop. Drag across the plush to pet it.',
+    begin(c, hit, ray) {
+      c.poke(hit.point, ray.d, 1.6, c.sim.lat.H * 2.2);
+      c.emit('poke', { regions: hit.regions, point: hit.point });
+      this.last = 0;
+      return true;
+    },
+    move(c, hit, ray) {
+      if (!hit || c.time - this.last < 0.12) return;
+      this.last = c.time;
+      c.poke(hit.point, ray.d, 0.35, c.sim.lat.H * 2);
+      c.emit('stroke', { regions: hit.regions, point: hit.point });
+    },
+    end() {},
+  },
+  comb: {
+    label: 'Comb', glyph: '≋', requires: 'fur',
+    hint: 'Drag across the pile to brush it. Smooth fur resets the nap.',
+    begin(c, hit) { this.prev = hit ? hit.point : null; this.last = -1; return true; },
+    move(c, hit) {
+      if (!hit) { this.prev = null; return; }
+      if (this.prev) {
+        const d = v3.sub(hit.point, this.prev);
+        if (v3.len(d) > 0.004) c.combAt(hit, v3.norm(d), 0.55);
+      }
+      this.prev = hit.point;
+      if (c.time - this.last > 0.25) { this.last = c.time; c.emit('comb', { regions: hit.regions, point: hit.point }); }
+    },
+    end() { this.prev = null; },
+  },
+};
+
+/** Actions every species can bind to without defining them. */
+const ENGINE_ACTIONS = {
+  'engine.smoothFur': { label: 'Smooth fur', requires: 'fur', run: (c) => c.smoothFur() },
+};
+
+/* ---------- 10. Creature: assembles all systems from a definition ------- */
+class Creature {
+  constructor(def, assets, opts = {}) {
+    this.def = def; this.assets = assets; this.seed = opts.seed || 1;
+    this.rng = makeRng(this.seed);
+    const envCfg = { ...ENVIRONMENTS[def.environment.preset], ...(def.environment.overrides || {}) };
+    this.env = new Environment(envCfg, def.items, this.rng);
+    this.sim = new SoftBody(assets.lattice, def.physics, this.spawnTransform());
+    this.loco = Locomotion.create(def.locomotion.type, this, def.locomotion);
+    this.joints = assets.joints.map((j) => ({ ...j, angle: 0, vel: 0 }));
+    this.expr = new Float32Array(4);
+    this.flags = {}; this.paramValues = {};
+    this.state = def.createState ? def.createState() : {};
+    this.fur = def.fur ? { pile: 1, comb: new Float32Array(assets.furDir), dirty: true } : null;
+    this.lag = new Float64Array(3 * this.sim.n); this.lagV = new Float64Array(3 * this.sim.n);
+    this.attachQ = new Float64Array(4 * MAX_ATTACH);
+    for (let k = 0; k < MAX_ATTACH; k++) this.attachQ[4 * k + 3] = 1;
+    this.attachMats = new Float32Array(16 * MAX_ATTACH);
+    this.interaction = { grabbed: false, regions: [], point: null };
+    this.pokes = []; this.time = 0;
+    this.presetId = def.materials.defaultPreset;
+    this.metrics = { mass: 0, volume: 0 };
+    this.ctx = this.makeContext();
+    this.machine = new BehaviorMachine(def.behaviors, this.ctx);
+    this.ctx.behaviors = this.machine;
+    for (const c of def.controls) if (c.bind && c.default !== undefined) this.setParam(c.bind, c.default);
+    this.updateMetrics();
+  }
+  spawnTransform() { return this.def.environment.spawn || { pos: this.env.api.center, yaw: 0 }; }
+  makeContext() {
+    const self = this;
+    return {
+      time: 0, dt: 0, intent: null, rand: () => self.rng(),
+      flags: this.flags, state: this.state, env: this.env.api, interaction: this.interaction,
+      get body() { return self.sim.frame; },
+      get locomotion() { return self.loco.readouts; },
+      landmark: (name) => self.landmarkWorld(name),
+      joint: (id) => self.joints.find((j) => j.id === id),
+      behaviors: null,
+    };
+  }
+  freshIntent() { return Object.assign(this.loco.defaultIntent(), { joints: {}, expr: {} }); }
+  setParam(path, value) {
+    const [ns, key] = path.split('.');
+    if (ns === 'physics' && key === 'stuffing') this.sim.setStuffing(value);
+    else if (ns === 'fur' && this.fur) this.fur[key] = value;
+    else if (ns === 'locomotion') this.loco.params[key] = value;
+    else if (ns === 'flags') this.flags[key] = value;
+    else if (ns === 'material' && key === 'preset') this.presetId = value;
+    this.paramValues[path] = value;
+  }
+  getParam(path) { return this.paramValues[path]; }
+  emit(type, info) {
+    for (const rule of this.def.interactions.reactions) {
+      if (rule.on !== type) continue;
+      if (rule.region && !(info.regions || []).includes(rule.region)) continue;
+      if (rule.when && !rule.when(this.ctx, info)) continue;
+      if (this.machine.react(rule.behavior, info)) return rule;
+    }
+    return null;
+  }
+  poke(point, dir, strength, radius) { this.pokes.push({ point, dir: v3.norm(dir), strength, radius }); }
+  step(dt) {
+    const ctx = this.ctx;
+    this.time += dt; ctx.time = this.time; ctx.dt = dt;
+    ctx.intent = this.freshIntent();
+    this.machine.tick(dt);
+    const I = ctx.intent;
+    for (const j of this.joints) {
+      const target = j.min + (j.max - j.min) * clamp(I.joints[j.id] ?? 0, 0, 1);
+      j.vel += (j.stiffness * (target - j.angle) - j.damping * j.vel) * dt;
+      j.angle += j.vel * dt;
+      const lo = Math.min(j.min, j.max), hi = Math.max(j.min, j.max);
+      if (j.angle < lo) { j.angle = lo; j.vel = 0; } else if (j.angle > hi) { j.angle = hi; j.vel = 0; }
+    }
+    this.assets.channels.forEach((ch, i) => {
+      const t = I.expr[ch] ?? 0;
+      this.expr[i] += (t - this.expr[i]) * damp(t > this.expr[i] ? 7 : 1.1, dt);
+    });
+    this.loco.pose(dt, I, this.sim.posed);
+    this.loco.control(dt, I);
+    const g = this.env.cfg.gravity * (1 - this.env.cfg.buoyancy), sim = this.sim;
+    sim.step(dt, this.env, (sdt, s) => {
+      const v = sim.v;
+      if (g) for (let p = 1; p < v.length; p += 3) v[p] += g * sdt;
+      if (this.env.cfg.medium === 'air') { const k = Math.exp(-0.15 * sdt); for (let p = 0; p < v.length; p++) v[p] *= k; }
+      this.loco.applyForces(sdt, s);
+      if (s === 0 && this.pokes.length) {
+        for (const pk of this.pokes) {
+          for (let i = 0; i < sim.n; i++) {
+            const d = Math.hypot(sim.x[3 * i] - pk.point[0], sim.x[3 * i + 1] - pk.point[1], sim.x[3 * i + 2] - pk.point[2]);
+            if (d > pk.radius) continue;
+            const k = pk.strength * (1 - d / pk.radius) ** 2;
+            v[3 * i] += pk.dir[0] * k; v[3 * i + 1] += pk.dir[1] * k; v[3 * i + 2] += pk.dir[2] * k;
+          }
+        }
+        this.pokes.length = 0;
+      }
+    });
+    this.env.step(dt);
+    this.updateFurLag(dt);
+  }
+  updateFurLag(dt) {
+    if (!this.fur) return;
+    const f = this.def.fur, v = this.sim.v, vp = this.sim.vPrev, L = this.lag, LV = this.lagV;
+    const k = f.lagStiffness, c = 2 * Math.sqrt(k) * f.lagDamping;
+    for (let i = 0; i < L.length; i++) {
+      const target = -((v[i] - vp[i]) / dt) * f.inertia - v[i] * f.flow;
+      LV[i] += (k * (target - L[i]) - c * LV[i]) * dt;
+      L[i] = clamp(L[i] + LV[i] * dt, -1.2, 1.2);
+    }
+  }
+  /** Rigid attachment matrices: lattice frame at the anchor × joint rotation. */
+  computeAttachments() {
+    const P = [0, 0, 0], Fm = new Float64Array(9), cells = this.sim.lat.cells;
+    this.assets.attachments.forEach((att, k) => {
+      const e = att.emb;
+      ffd(this.sim.x, cells, e.cell, e.u, e.v, e.w, P, Fm);
+      extractRotation(Fm, this.attachQ, 4 * k, 6);
+      const R = quatToMat3(this.attachQ, new Float64Array(9), 4 * k);
+      let L = R;
+      if (att.joint >= 0) {
+        const j = this.joints[att.joint], J = quatToMat3(quatAxisAngle(v3.norm(j.axis), j.angle));
+        L = new Float64Array(9);
+        for (let c = 0; c < 3; c++) for (let r = 0; r < 3; r++) L[c * 3 + r] = R[r] * J[c * 3] + R[3 + r] * J[c * 3 + 1] + R[6 + r] * J[c * 3 + 2];
+      }
+      const a = att.anchor, M = this.attachMats, o = 16 * k;
+      for (let c = 0; c < 3; c++) { M[o + 4 * c] = L[3 * c]; M[o + 4 * c + 1] = L[3 * c + 1]; M[o + 4 * c + 2] = L[3 * c + 2]; M[o + 4 * c + 3] = 0; }
+      for (let r = 0; r < 3; r++) M[o + 12 + r] = P[r] - (L[r] * a[0] + L[3 + r] * a[1] + L[6 + r] * a[2]);
+      M[o + 15] = 1;
+    });
+  }
+  landmarkWorld(name) {
+    const e = this.assets.landmarks[name], P = [0, 0, 0];
+    if (!e) return this.sim.frame.c.slice();
+    ffd(this.sim.x, this.sim.lat.cells, e.cell, e.u, e.v, e.w, P, null);
+    return P;
+  }
+  regionsAt(p) {
+    const out = [];
+    for (const r of this.def.interactions.regions) {
+      let hit = false;
+      if (r.sphere) hit = Math.hypot(p[0] - r.sphere[0], p[1] - r.sphere[1], p[2] - r.sphere[2]) < r.sphere[3];
+      else if (r.box) hit = p[0] >= r.box.min[0] && p[0] <= r.box.max[0] && p[1] >= r.box.min[1] && p[1] <= r.box.max[1] && p[2] >= r.box.min[2] && p[2] <= r.box.max[2];
+      else if (r.test) hit = r.test(p[0], p[1], p[2]);
+      if (hit) out.push(r.id);
+    }
+    return out;
+  }
+  /** Ray vs skinned render vertices (CPU FFD of the same embedding the GPU uses). */
+  raycast(o, d) {
+    const A = this.assets, x = this.sim.x, cells = this.sim.lat.cells, P = [0, 0, 0], r2 = (this.def.interactions.pickRadius || 0.035) ** 2;
+    let best = -1, bt = Infinity, bp = null;
+    for (let k = 0; k < A.pick.length; k++) {
+      const v = A.pick[k];
+      ffd(x, cells, A.embCell[v], A.embUVW[3 * v], A.embUVW[3 * v + 1], A.embUVW[3 * v + 2], P, null);
+      const px = P[0] - o[0], py = P[1] - o[1], pz = P[2] - o[2], t = px * d[0] + py * d[1] + pz * d[2];
+      if (t < 0 || t > bt) continue;
+      if (px * px + py * py + pz * pz - t * t < r2) { bt = t; best = v; bp = P.slice(); }
+    }
+    if (best < 0) return null;
+    const rest = [A.restPos[3 * best], A.restPos[3 * best + 1], A.restPos[3 * best + 2]];
+    return { point: bp, rest, vertex: best, t: bt, regions: this.regionsAt(rest) };
+  }
+  combAt(hit, dirWorld, strength) {
+    if (!this.fur) return;
+    const R = this.sim.frame.R, A = this.assets, comb = this.fur.comb, rad = this.def.fur.combRadius || 0.09;
+    const dr = [R[0] * dirWorld[0] + R[1] * dirWorld[1] + R[2] * dirWorld[2], R[3] * dirWorld[0] + R[4] * dirWorld[1] + R[5] * dirWorld[2],
+      R[6] * dirWorld[0] + R[7] * dirWorld[1] + R[8] * dirWorld[2]];
+    const p = hit.rest, HC = A.HC, cr = Math.ceil(rad / HC);
+    const ci = [Math.floor(p[0] / HC), Math.floor(p[1] / HC), Math.floor(p[2] / HC)];
+    for (let a = -cr; a <= cr; a++) for (let b = -cr; b <= cr; b++) for (let c = -cr; c <= cr; c++) {
+      const list = A.hash.get(`${ci[0] + a},${ci[1] + b},${ci[2] + c}`);
+      if (!list) continue;
+      for (const v of list) {
+        const d = Math.hypot(A.restPos[3 * v] - p[0], A.restPos[3 * v + 1] - p[1], A.restPos[3 * v + 2] - p[2]);
+        if (d > rad || A.furDir[3 * v] === 0 && A.furDir[3 * v + 1] === 0 && A.furDir[3 * v + 2] === 0) continue;
+        const nx = A.restNrm[3 * v], ny = A.restNrm[3 * v + 1], nz = A.restNrm[3 * v + 2], dn = dr[0] * nx + dr[1] * ny + dr[2] * nz;
+        const t = v3.norm([dr[0] - nx * dn, dr[1] - ny * dn, dr[2] - nz * dn]), wgt = strength * (1 - d / rad);
+        const m = v3.norm([comb[3 * v] * (1 - wgt) + t[0] * wgt, comb[3 * v + 1] * (1 - wgt) + t[1] * wgt, comb[3 * v + 2] * (1 - wgt) + t[2] * wgt]);
+        comb.set(m, 3 * v);
+      }
+    }
+    this.fur.dirty = true;
+  }
+  smoothFur() { if (this.fur) { this.fur.comb.set(this.assets.furDir); this.fur.dirty = true; } }
+  /** Grain alignment of the comb field (1 = smooth nap) — a live read-out. */
+  napAlignment() {
+    if (!this.fur) return 1;
+    const c = this.fur.comb, f = this.assets.furDir;
+    let s = 0, n = 0;
+    for (let i = 0; i < c.length; i += 9) { const d = c[i] * f[i] + c[i + 1] * f[i + 1] + c[i + 2] * f[i + 2]; if (f[i] || f[i + 1] || f[i + 2]) { s += d; n++; } }
+    return n ? s / n : 1;
+  }
+  updateMetrics() {
+    const u = this.def.physics.unitMeters, V = this.sim.measureVolume() * u ** 3 * 1000; // litres
+    this.metrics.volume = V;
+    this.metrics.mass = V * this.def.physics.fillGramsPerLitre * this.sim.stuffing + this.def.physics.shellGrams;
+  }
+  reset() {
+    this.rng = makeRng(this.seed); this.env.rng = this.rng; this.env.clear();
+    this.sim.reset(this.spawnTransform()); this.loco.reset();
+    this.joints.forEach((j) => { j.angle = 0; j.vel = 0; });
+    this.expr.fill(0); this.lag.fill(0); this.lagV.fill(0);
+    Object.keys(this.state).forEach((k) => delete this.state[k]);
+    if (this.def.createState) Object.assign(this.state, this.def.createState());
+    this.interaction.grabbed = false; this.time = 0; this.ctx.time = 0;
+    this.machine.reset();
+    this.smoothFur();
+  }
+}
+
+/* ---------- 11. Species registry & validation -------------------------- */
+const registry = [];
+const BEHAVIOR_KINDS = ['autonomous', 'user', 'reactive', 'environment'];
+const CONTROL_TYPES = ['button', 'toggle', 'slider', 'select', 'preset'];
+const BIND_NAMESPACES = ['physics', 'fur', 'locomotion', 'flags', 'material'];
+
+/**
+ * Static validation of a SpeciesDefinition against engine capabilities. It
+ * deliberately knows nothing about any animal; it checks references only.
+ */
+function validateSpecies(def) {
+  const errors = [], warnings = [];
+  let checks = 0;
+  const req = (cond, msg) => { checks++; if (!cond) errors.push(msg); };
+  req(def.id && def.name && def.category, 'identity: id, name and category are required');
+  if (def.status === 'planned') return { ok: errors.length === 0, errors, warnings, checks, planned: true };
+  req(def.display && Array.isArray(def.display.title) && def.display.title.length === 2, 'display.title must be two lines');
+  req(ENVIRONMENTS[def.environment?.preset], `environment preset "${def.environment?.preset}" is not registered`);
+  const A = def.anatomy || {};
+  req(Array.isArray(A.parts) && A.parts.length, 'anatomy.parts must be non-empty');
+  req((A.parts || []).some((p) => !p.attach), 'anatomy needs at least one lattice-skinned part');
+  const regions = Object.keys(def.materials?.regions || {});
+  req(regions.length > 0 && regions.length <= MAX_REGIONS, `materials.regions must declare 1–${MAX_REGIONS} regions`);
+  for (const r of regions) req(MATERIAL_TYPES[def.materials.regions[r].type] !== undefined, `region "${r}" has unknown material type`);
+  for (const p of A.parts || []) {
+    req(typeof p.sdf === 'function' && typeof p.region === 'function', `part "${p.id}": sdf() and region() required`);
+    req(p.bounds && p.resolution > 0, `part "${p.id}": bounds and resolution required`);
+    if (p.attach) {
+      req(A.anchors && A.anchors[p.attach.anchor], `part "${p.id}": anchor "${p.attach.anchor}" missing`);
+      if (p.attach.joint) req(A.joints && A.joints[p.attach.joint], `part "${p.id}": joint "${p.attach.joint}" missing`);
+    }
+  }
+  for (const [id, j] of Object.entries(A.joints || {})) req(j.axis && j.stiffness > 0 && j.damping >= 0, `joint "${id}": axis/stiffness/damping`);
+  for (const s of A.expressions?.spots || []) req((A.expressions.channels || []).includes(s.channel), `expression spot uses unknown channel "${s.channel}"`);
+  req((A.expressions?.channels || []).length <= 4, 'at most 4 expression channels');
+  for (const p of def.materials?.presets || []) for (const r of regions) req(p.colors[r], `preset "${p.id}" lacks colour for region "${r}"`);
+  req(def.materials?.presets?.some((p) => p.id === def.materials.defaultPreset), 'materials.defaultPreset must exist');
+  const P = def.physics || {};
+  req(P.latticeSpacing > 0 && Array.isArray(P.shapeStiffness) && Array.isArray(P.volumeCompliance) && Array.isArray(P.inflate), 'physics: latticeSpacing, shapeStiffness, volumeCompliance, inflate');
+  req(P.unitMeters > 0 && P.fillGramsPerLitre > 0, 'physics: unitMeters and fillGramsPerLitre for read-outs');
+  req(Locomotion.registry[def.locomotion?.type], `locomotion "${def.locomotion?.type}" is not a registered capability`);
+  const B = def.behaviors || {}, states = B.states || {};
+  req(states[B.initial], `initial behaviour "${B.initial}" missing`);
+  for (const [id, s] of Object.entries(states)) {
+    req(BEHAVIOR_KINDS.includes(s.kind), `behaviour "${id}": kind must be one of ${BEHAVIOR_KINDS.join(', ')}`);
+    req(typeof s.priority === 'number', `behaviour "${id}": numeric priority`);
+  }
+  const I = def.interactions || {}, regionIds = (I.regions || []).map((r) => r.id);
+  for (const t of I.tools || []) {
+    req(TOOLS[t], `tool "${t}" is not provided by the engine`);
+    if (TOOLS[t]?.requires === 'fur') req(!!def.fur, `tool "${t}" requires a fur definition`);
+  }
+  for (const r of I.reactions || []) {
+    req(states[r.behavior], `reaction on "${r.on}" targets unknown behaviour "${r.behavior}"`);
+    if (r.region) req(regionIds.includes(r.region), `reaction references unknown region "${r.region}"`);
+  }
+  if (def.fur) req(typeof def.fur.direction === 'function' && def.fur.shells > 0, 'fur: direction() and shells');
+  for (const c of def.controls || []) {
+    req(c.id && c.label && CONTROL_TYPES.includes(c.type), `control "${c.id}": id, label and supported type`);
+    if (c.action) req((def.actions && def.actions[c.action]) || ENGINE_ACTIONS[c.action], `control "${c.id}": unknown action "${c.action}"`);
+    if (ENGINE_ACTIONS[c.action]?.requires === 'fur') req(!!def.fur, `control "${c.id}" needs fur`);
+    if (c.bind) req(BIND_NAMESPACES.includes(c.bind.split('.')[0]), `control "${c.id}": bind namespace must be one of ${BIND_NAMESPACES.join(', ')}`);
+    if (c.type === 'slider') req(c.min < c.max && c.default >= c.min && c.default <= c.max, `slider "${c.id}": range/default`);
+    if (c.bind === 'fur.pile') req(!!def.fur, `slider "${c.id}" binds fur but species has none`);
+  }
+  for (const r of def.readouts || []) req(r.id && r.label && typeof r.get === 'function', `readout "${r.id}": label and get()`);
+  for (const [id, it] of Object.entries(def.items || {})) req(typeof it.sdf === 'function' && it.radius > 0, `item "${id}": sdf and radius`);
+  if (!def.notes) warnings.push('no technical notes');
+  return { ok: errors.length === 0, errors, warnings, checks };
+}
+
+function registerSpecies(def) {
+  def.validation = validateSpecies(def);
+  registry.push(def);
+  if (!def.validation.ok) console.warn(`Species "${def.id}" failed validation`, def.validation.errors);
+  return def;
+}
+
+
+/* ---------- 12. Rendering system (WebGPU) ------------------------------ */
+const WGSL = /* wgsl */`
+struct Frame {
+  viewProj: mat4x4f, lightViewProj: mat4x4f,
+  eye: vec4f, keyDir: vec4f, keyColor: vec4f, fillDir: vec4f, fillColor: vec4f,
+  skyColor: vec4f, groundColor: vec4f, bgColor: vec4f,
+  fur: vec4f,      // pile length, shell count, strand density, droop
+  env: vec4f,      // floor y, caustics, fade radius, unused
+  bounds: vec4f,   // min x, min z, max x, max z
+  floorColor: vec4f,
+};
+struct Material { color: vec4f, props: vec4f };
+struct Spot { center: vec4f, color: vec4f };
+struct Decal { a: vec4f, b: vec4f, p: vec4f };
+struct CreatureU {
+  attach: array<mat4x4f, 4>,
+  materials: array<Material, 16>,
+  spots: array<Spot, 4>,
+  expr: vec4f,
+  groups: array<vec4u, 32>,
+  decals: array<Decal, 128>,
+};
+struct Props { model: array<mat4x4f, 8> };
+
+@group(0) @binding(0) var<uniform> F: Frame;
+@group(0) @binding(1) var<storage, read> particles: array<vec4f>;
+@group(0) @binding(2) var<storage, read> lagBuf: array<vec4f>;
+@group(0) @binding(3) var<storage, read> cells: array<u32>;
+@group(0) @binding(4) var<uniform> C: CreatureU;
+@group(0) @binding(5) var<uniform> P: Props;
+@group(1) @binding(0) var shadowTex: texture_depth_2d;
+@group(1) @binding(1) var shadowSamp: sampler_comparison;
+
+struct VIn {
+  @location(0) restPos: vec3f,
+  @location(1) restNrm: vec3f,
+  @location(2) uvw: vec3f,
+  @location(3) info: vec4u,     // lattice cell, attachment, region pair (lo: +side, hi: -side), decal-group mask
+  @location(4) furDir: vec4f,   // xyz: default nap direction, w: signed region-boundary field
+  @location(5) comb: vec3f,
+};
+struct VOut {
+  @builtin(position) pos: vec4f,
+  @location(0) world: vec3f,
+  @location(1) nrm: vec3f,
+  @location(2) rest: vec3f,
+  @location(3) @interpolate(flat) info: vec2u,
+  @location(4) shell: f32,
+  @location(5) grain: f32,
+  @location(6) restN: vec3f,
+  @location(7) field: f32,
+};
+struct Skinned { pos: vec3f, nrm: vec3f, comb: vec3f, lag: vec3f };
+
+fn skin(v: VIn) -> Skinned {
+  var s: Skinned;
+  if (v.info.y > 0u) {
+    let M = C.attach[v.info.y - 1u];
+    s.pos = (M * vec4f(v.restPos, 1.0)).xyz;
+    s.nrm = (M * vec4f(v.restNrm, 0.0)).xyz;
+    s.comb = (M * vec4f(v.comb, 0.0)).xyz;
+    s.lag = vec3f(0.0);
+    return s;
+  }
+  let b = v.info.x * 8u;
+  let x0 = particles[cells[b]].xyz;      let x1 = particles[cells[b + 1u]].xyz;
+  let x2 = particles[cells[b + 2u]].xyz; let x3 = particles[cells[b + 3u]].xyz;
+  let x4 = particles[cells[b + 4u]].xyz; let x5 = particles[cells[b + 5u]].xyz;
+  let x6 = particles[cells[b + 6u]].xyz; let x7 = particles[cells[b + 7u]].xyz;
+  let u = v.uvw.x; let w = v.uvw.z; let t = v.uvw.y;
+  s.pos = mix(mix(mix(x0, x1, u), mix(x2, x3, u), t), mix(mix(x4, x5, u), mix(x6, x7, u), t), w);
+  let du = (1.0 - t) * (1.0 - w) * (x1 - x0) + t * (1.0 - w) * (x3 - x2) + (1.0 - t) * w * (x5 - x4) + t * w * (x7 - x6);
+  let dv = (1.0 - u) * (1.0 - w) * (x2 - x0) + u * (1.0 - w) * (x3 - x1) + (1.0 - u) * w * (x6 - x4) + u * w * (x7 - x5);
+  let dw = (1.0 - u) * (1.0 - t) * (x4 - x0) + u * (1.0 - t) * (x5 - x1) + (1.0 - u) * t * (x6 - x2) + u * t * (x7 - x3);
+  s.nrm = v.restNrm.x * cross(dv, dw) + v.restNrm.y * cross(dw, du) + v.restNrm.z * cross(du, dv);
+  s.comb = du * v.comb.x + dv * v.comb.y + dw * v.comb.z;
+  let l0 = lagBuf[cells[b]].xyz;      let l1 = lagBuf[cells[b + 1u]].xyz;
+  let l2 = lagBuf[cells[b + 2u]].xyz; let l3 = lagBuf[cells[b + 3u]].xyz;
+  let l4 = lagBuf[cells[b + 4u]].xyz; let l5 = lagBuf[cells[b + 5u]].xyz;
+  let l6 = lagBuf[cells[b + 6u]].xyz; let l7 = lagBuf[cells[b + 7u]].xyz;
+  s.lag = mix(mix(mix(l0, l1, u), mix(l2, l3, u), t), mix(mix(l4, l5, u), mix(l6, l7, u), t), w);
+  return s;
+}
+
+fn safeNorm(v: vec3f, fallback: vec3f) -> vec3f {
+  let l = length(v);
+  if (l < 1e-8) { return fallback; }
+  return v / l;
+}
+
+@vertex fn vsCreature(v: VIn, @builtin(instance_index) inst: u32) -> VOut {
+  let s = skin(v);
+  let n = safeNorm(s.nrm, vec3f(0.0, 1.0, 0.0));
+  let mat = C.materials[select(v.info.z >> 8u, v.info.z & 255u, v.furDir.w >= 0.0)];
+  let t = f32(inst) / max(F.fur.y, 1.0);
+  var len = F.fur.x * mat.props.x;
+  if (v.info.w != 0u && inst > 0u) { len *= decalPileScale(v.restPos, v.info.w); }
+  var comb = s.comb - n * dot(s.comb, n);
+  comb = safeNorm(comb, vec3f(0.0));
+  let bend = comb * 0.6 + s.lag + vec3f(0.0, -F.fur.w, 0.0);
+  let p = s.pos + n * (len * t) + bend * (len * t * t);
+  var o: VOut;
+  o.pos = F.viewProj * vec4f(p, 1.0);
+  o.world = p;
+  o.nrm = safeNorm(n + bend * t * 0.35, n);
+  o.rest = v.restPos;
+  o.info = vec2u(v.info.z, v.info.w);
+  o.shell = t;
+  o.grain = dot(safeNorm(v.comb, vec3f(0.0)), safeNorm(v.furDir.xyz, vec3f(0.0)));
+  if (length(v.furDir.xyz) < 0.5) { o.grain = 1.0; }
+  o.restN = v.restNrm;
+  o.field = v.furDir.w;
+  return o;
+}
+
+@vertex fn vsShadow(v: VIn) -> @builtin(position) vec4f {
+  return F.lightViewProj * vec4f(skin(v).pos, 1.0);
+}
+
+fn pcg(v: u32) -> u32 {
+  let s = v * 747796405u + 2891336453u;
+  let w = ((s >> ((s >> 28u) + 4u)) ^ s) * 277803737u;
+  return (w >> 22u) ^ w;
+}
+fn hash3(c: vec3f) -> vec3f {
+  let i = vec3u(vec3i(c) + vec3i(8192));
+  let a = pcg(i.x ^ pcg(i.y ^ pcg(i.z)));
+  return vec3f(f32(a & 1023u), f32((a >> 10u) & 1023u), f32((a >> 20u) & 1023u)) / 1023.0;
+}
+
+fn encode(c: vec3f) -> vec3f { return pow(clamp(c, vec3f(0.0), vec3f(1.0)), vec3f(1.0 / 2.2)); }
+
+fn shadowAt(world: vec3f, n: vec3f) -> f32 {
+  let lp = F.lightViewProj * vec4f(world + n * 0.015, 1.0);
+  let uv = vec2f(lp.x * 0.5 + 0.5, 0.5 - lp.y * 0.5);
+  if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0 || lp.z > 1.0) { return 1.0; }
+  let texel = 1.0 / 2048.0;
+  var sum = 0.0;
+  for (var y = -1; y <= 1; y++) {
+    for (var x = -1; x <= 1; x++) {
+      sum += textureSampleCompareLevel(shadowTex, shadowSamp, uv + vec2f(f32(x), f32(y)) * texel * 1.6, lp.z - 0.0015);
+    }
+  }
+  return mix(1.0, sum / 9.0, F.keyDir.w);
+}
+
+fn studioEnv(r: vec3f) -> vec3f {
+  var c = mix(F.groundColor.rgb * 0.6, F.skyColor.rgb * 1.15, smoothstep(-0.3, 0.8, r.y));
+  c += F.keyColor.rgb * pow(max(dot(r, normalize(F.keyDir.xyz)), 0.0), 60.0) * 3.0;
+  c += F.fillColor.rgb * pow(max(dot(r, normalize(F.fillDir.xyz)), 0.0), 16.0) * 0.6;
+  return c;
+}
+
+struct Surf { color: vec3f, kind: f32, furMul: f32, sheen: f32, gloss: f32, cut: f32 };
+
+// x: hit, y: region, z: distance along stitch line, w: cuts fur
+fn decalAt(p: vec3f, mask: u32) -> vec4f {
+  var res = vec4f(0.0);
+  var m = mask;
+  for (var guard = 0; guard < 32; guard++) {
+    if (m == 0u) { break; }
+    let g = firstTrailingBit(m);
+    m = m & (m - 1u);
+    let gr = C.groups[g];
+    for (var k = gr.x; k < gr.x + gr.y; k++) {
+      let d = C.decals[k];
+      let ab = d.b.xyz - d.a.xyz;
+      let L = max(length(ab), 1e-6);
+      let h = clamp(dot(p - d.a.xyz, ab) / (L * L), 0.0, 1.0);
+      let dist = length(p - d.a.xyz - ab * h);
+      if (dist < d.a.w) {
+        let along = h * L + d.p.w;
+        var on = true;
+        if (d.p.x > 0.0) { on = fract(along / d.p.x) < d.p.y; }
+        if (on) { res = vec4f(1.0, d.b.w, along, d.p.z); }
+      }
+    }
+  }
+  return res;
+}
+
+// Embroidery and stitches pull the pile down around them (quilted groove).
+fn decalPileScale(p: vec3f, mask: u32) -> f32 {
+  var k = 1.0;
+  var m = mask;
+  for (var guard = 0; guard < 32; guard++) {
+    if (m == 0u) { break; }
+    let g = firstTrailingBit(m);
+    m = m & (m - 1u);
+    let gr = C.groups[g];
+    for (var i = gr.x; i < gr.x + gr.y; i++) {
+      let d = C.decals[i];
+      if (d.p.z < 0.5) { continue; }
+      let ab = d.b.xyz - d.a.xyz;
+      let h = clamp(dot(p - d.a.xyz, ab) / max(dot(ab, ab), 1e-10), 0.0, 1.0);
+      let dist = length(p - d.a.xyz - ab * h);
+      k = min(k, mix(0.15, 1.0, smoothstep(d.a.w * 0.5, d.a.w + 0.02, dist)));
+    }
+  }
+  return k;
+}
+
+fn surfaceAt(rest: vec3f, regions: u32, field: f32, mask: u32) -> Surf {
+  var s: Surf;
+  var region = select(regions >> 8u, regions & 255u, field >= 0.0);
+  let dh = decalAt(rest, mask);
+  s.cut = 0.0;
+  if (dh.x > 0.5) { region = u32(dh.y); s.cut = dh.w; }
+  let m = C.materials[region];
+  s.color = m.color.rgb; s.kind = m.color.a; s.furMul = m.props.x; s.sheen = m.props.y; s.gloss = m.props.z;
+  if (dh.x > 0.5 && s.kind > 2.5 && s.kind < 3.5) { s.color *= 0.8 + 0.2 * sin(dh.z * 1800.0); }
+  if (s.kind < 1.5) {
+    for (var i = 0; i < 4; i++) {
+      let sp = C.spots[i];
+      if (sp.center.w <= 0.0) { continue; }
+      let amt = C.expr[u32(sp.color.w)] * (1.0 - smoothstep(sp.center.w * 0.3, sp.center.w, distance(rest, sp.center.xyz)));
+      s.color = mix(s.color, sp.color.rgb, clamp(amt, 0.0, 1.0) * 0.8);
+    }
+  }
+  return s;
+}
+
+fn shade(s: Surf, world: vec3f, n: vec3f, ao: f32, grain: f32) -> vec3f {
+  let v = normalize(F.eye.xyz - world);
+  let l = normalize(F.keyDir.xyz);
+  let sh = shadowAt(world, n);
+  let ndl = dot(n, l);
+  let ndv = clamp(dot(n, v), 0.0, 1.0);
+  let hemi = mix(F.groundColor.rgb, F.skyColor.rgb, n.y * 0.5 + 0.5);
+  if (s.kind > 1.5 && s.kind < 2.5) {           // glass eye
+    let r = reflect(-v, n);
+    let fres = 0.04 + 0.96 * pow(1.0 - ndv, 5.0);
+    let h = normalize(l + v);
+    let spec = pow(max(dot(n, h), 0.0), 260.0) * 7.0 * sh;
+    return s.color * (0.25 + 0.6 * max(ndl, 0.0) * sh) + studioEnv(r) * (0.06 + fres * 0.75) + F.keyColor.rgb * spec;
+  }
+  var base = s.color;
+  if (s.kind < 0.5) { base *= mix(0.74, 1.04, grain * 0.5 + 0.5); }   // minky nap: against-grain reads darker
+  let wrap = clamp((ndl + 0.45) / 1.45, 0.0, 1.0);
+  let key = F.keyColor.rgb * wrap * mix(0.35, 1.0, sh);
+  let fill = F.fillColor.rgb * clamp(dot(n, normalize(F.fillDir.xyz)) * 0.5 + 0.5, 0.0, 1.0);
+  var col = base * (key + fill + hemi * ao);
+  let rim = pow(1.0 - ndv, 2.5) * s.sheen;
+  col += rim * (hemi * 0.5 + F.keyColor.rgb * 0.25 * sh) * (base * 1.4 + vec3f(0.12));
+  if (s.gloss > 0.0) {
+    let h = normalize(l + v);
+    col += F.keyColor.rgb * pow(max(dot(n, h), 0.0), 36.0) * s.gloss * sh * 0.5;
+  }
+  return col;
+}
+
+fn fog(c: vec3f, world: vec3f) -> vec3f {
+  let d = distance(world, F.eye.xyz);
+  return mix(c, F.bgColor.rgb, smoothstep(9.0, 26.0, d) * 0.7);
+}
+
+@fragment fn fsCreature(in: VOut) -> @location(0) vec4f {
+  let s = surfaceAt(in.rest, in.info.x, in.field, in.info.y);
+  let n = normalize(in.nrm);
+  let furred = s.furMul > 0.0 && F.fur.y > 0.0 && s.cut < 0.5;
+  var ao = 1.0;
+  if (furred) { ao = 0.6; }
+  var col = shade(s, in.world, n, ao, in.grain);
+  if (furred) { col *= 0.66; }
+  return vec4f(encode(fog(col, in.world)), 1.0);
+}
+
+@fragment fn fsFur(in: VOut) -> @location(0) vec4f {
+  let s = surfaceAt(in.rest, in.info.x, in.field, in.info.y);
+  let t = in.shell;
+  let q = in.rest * F.fur.z;
+  let h1 = hash3(floor(q));
+  let f = fract(q) - 0.5 - (h1 - 0.5) * 0.45;
+  let rn = normalize(in.restN);
+  let r = length(f - rn * dot(f, rn));
+  let height = 0.5 + 0.5 * h1.x;
+  let radius = 0.62 * (1.0 - t / height);
+  var cov = (1.0 - smoothstep(radius - 0.1, radius + 0.06, r)) * step(t, height);
+  if (s.furMul <= 0.0 || s.cut > 0.5) { cov = 0.0; }
+  if (cov < 0.03) { discard; }
+  let n = normalize(in.nrm);
+  var col = shade(s, in.world, n, mix(0.62, 1.0, t), in.grain) * mix(0.66, 1.0, t) * (0.9 + 0.2 * h1.y);
+  return vec4f(encode(fog(col, in.world)), cov);
+}
+
+// ---- floor -------------------------------------------------------------
+struct FOut { @builtin(position) pos: vec4f, @location(0) world: vec3f };
+@vertex fn vsFloor(@builtin(vertex_index) vi: u32) -> FOut {
+  var corners = array<vec2f, 6>(vec2f(-1.0, -1.0), vec2f(1.0, -1.0), vec2f(1.0, 1.0), vec2f(-1.0, -1.0), vec2f(1.0, 1.0), vec2f(-1.0, 1.0));
+  let c = corners[vi] * 40.0;
+  var o: FOut;
+  o.world = vec3f(c.x, F.env.x, c.y);
+  o.pos = F.viewProj * vec4f(o.world, 1.0);
+  return o;
+}
+fn caustic(p: vec2f, t: f32) -> f32 {
+  var q = p;
+  var c = 0.0;
+  for (var i = 0; i < 3; i++) {
+    let fi = f32(i);
+    q = vec2f(q.x + 0.6 * sin(q.y * 1.3 + t * 0.7 + fi), q.y + 0.6 * cos(q.x * 1.1 - t * 0.6 + fi * 1.7));
+    c += 1.0 / (1.0 + 7.0 * abs(sin(q.x * 1.7) + sin(q.y * 1.9)));
+  }
+  return c / 3.0;
+}
+@fragment fn fsFloor(in: FOut) -> @location(0) vec4f {
+  let p = in.world;
+  let center = vec2f(F.bounds.x + F.bounds.z, F.bounds.y + F.bounds.w) * 0.5;
+  let half = vec2f(F.bounds.z - F.bounds.x, F.bounds.w - F.bounds.y) * 0.5;
+  let q = abs(p.xz - center) - half + vec2f(0.45);
+  let dm = length(max(q, vec2f(0.0))) + min(max(q.x, q.y), 0.0) - 0.45;
+  var base = F.floorColor.rgb;
+  let fib = hash3(vec3f(floor(p.xz * 140.0), 3.0));
+  base *= 0.96 + 0.06 * fib.x;
+  let inMat = 1.0 - smoothstep(-0.01, 0.01, dm);
+  base = mix(base * 0.9, base, inMat);
+  let stitch = (1.0 - smoothstep(0.0, 0.012, abs(dm + 0.09))) * step(0.45, fract((p.x + p.z) * 9.0));
+  base = mix(base, base * 0.72, stitch * inMat);
+  if (F.env.y > 0.5) { base += vec3f(0.85, 0.95, 1.0) * caustic(p.xz * 1.3, F.eye.w) * 0.16 * inMat; }
+  let n = vec3f(0.0, 1.0, 0.0);
+  let sh = shadowAt(p, n);
+  let col = base * (F.keyColor.rgb * max(dot(n, normalize(F.keyDir.xyz)), 0.0) * mix(0.3, 1.0, sh) + F.skyColor.rgb * 0.75 + F.fillColor.rgb * 0.2);
+  let r = length(p.xz - center);
+  let fade = smoothstep(F.env.z * 0.45, F.env.z, r);
+  return vec4f(encode(mix(col, F.bgColor.rgb, fade)), 1.0);
+}
+
+// ---- props (environment items) ------------------------------------------
+struct PIn { @location(0) pos: vec3f, @location(1) nrm: vec3f, @location(2) col: vec3f };
+struct POut { @builtin(position) pos: vec4f, @location(0) world: vec3f, @location(1) nrm: vec3f, @location(2) col: vec3f };
+@vertex fn vsProp(v: PIn, @builtin(instance_index) i: u32) -> POut {
+  let M = P.model[i];
+  var o: POut;
+  o.world = (M * vec4f(v.pos, 1.0)).xyz;
+  o.nrm = (M * vec4f(v.nrm, 0.0)).xyz;
+  o.col = v.col;
+  o.pos = F.viewProj * vec4f(o.world, 1.0);
+  return o;
+}
+@vertex fn vsPropShadow(v: PIn, @builtin(instance_index) i: u32) -> @builtin(position) vec4f {
+  return F.lightViewProj * (P.model[i] * vec4f(v.pos, 1.0));
+}
+@fragment fn fsProp(in: POut) -> @location(0) vec4f {
+  var s: Surf;
+  s.color = in.col; s.kind = 1.0; s.furMul = 0.0; s.sheen = 0.35; s.gloss = 0.0; s.cut = 0.0;
+  if (in.col.r + in.col.g + in.col.b < 0.05) { s.kind = 2.0; }
+  let n = safeNorm(in.nrm, vec3f(0.0, 1.0, 0.0));
+  return vec4f(encode(fog(shade(s, in.world, n, 1.0, 1.0), in.world)), 1.0);
+}
+
+// ---- lattice debug lines -------------------------------------------------
+@vertex fn vsLines(@builtin(vertex_index) vi: u32) -> @builtin(position) vec4f {
+  return F.viewProj * vec4f(particles[vi].xyz, 1.0);
+}
+@fragment fn fsLines() -> @location(0) vec4f { return vec4f(0.12, 0.1, 0.09, 0.5); }
+`;
+
+class GPUUnavailable extends Error {}
+
+const FRAME_FLOATS = 80, CREATURE_BYTES = 7568, PROPS_BYTES = 512, SHADOW_SIZE = 2048;
+
+class Renderer {
+  static async create(canvas) {
+    if (!('gpu' in navigator)) throw new GPUUnavailable('This browser does not expose WebGPU (navigator.gpu is missing).');
+    const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
+    if (!adapter) throw new GPUUnavailable('WebGPU is present, but no compatible GPU adapter was found.');
+    const device = await adapter.requestDevice();
+    const r = new Renderer(canvas, device);
+    await r.checkShaders();
+    return r;
+  }
+  constructor(canvas, device) {
+    this.canvas = canvas; this.device = device;
+    this.ctx = canvas.getContext('webgpu');
+    this.format = navigator.gpu.getPreferredCanvasFormat();
+    this.ctx.configure({ device, format: this.format, alphaMode: 'opaque' });
+    this.sampleCount = 4;
+    const U = GPUBufferUsage;
+    this.frameData = new Float32Array(FRAME_FLOATS);
+    this.frameBuf = device.createBuffer({ size: FRAME_FLOATS * 4, usage: U.UNIFORM | U.COPY_DST });
+    this.creatureBuf = device.createBuffer({ size: CREATURE_BYTES, usage: U.UNIFORM | U.COPY_DST });
+    this.creatureData = new ArrayBuffer(CREATURE_BYTES);
+    this.propsBuf = device.createBuffer({ size: PROPS_BYTES, usage: U.UNIFORM | U.COPY_DST });
+    this.propsData = new Float32Array(PROPS_BYTES / 4);
+    this.placeholder = device.createBuffer({ size: 64, usage: U.STORAGE });
+    this.shadowTex = device.createTexture({ size: [SHADOW_SIZE, SHADOW_SIZE], format: 'depth32float', usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING });
+    this.shadowSampler = device.createSampler({ compare: 'less', magFilter: 'linear', minFilter: 'linear' });
+    this.module = device.createShaderModule({ code: WGSL });
+    const VF = GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT;
+    this.bgl0 = device.createBindGroupLayout({ entries: [
+      { binding: 0, visibility: VF, buffer: { type: 'uniform' } },
+      { binding: 1, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
+      { binding: 2, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
+      { binding: 3, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
+      { binding: 4, visibility: VF, buffer: { type: 'uniform' } },
+      { binding: 5, visibility: GPUShaderStage.VERTEX, buffer: { type: 'uniform' } },
+    ] });
+    this.bgl1 = device.createBindGroupLayout({ entries: [
+      { binding: 0, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'depth' } },
+      { binding: 1, visibility: GPUShaderStage.FRAGMENT, sampler: { type: 'comparison' } },
+    ] });
+    this.bg1 = device.createBindGroup({ layout: this.bgl1, entries: [{ binding: 0, resource: this.shadowTex.createView() }, { binding: 1, resource: this.shadowSampler }] });
+    const mainLayout = device.createPipelineLayout({ bindGroupLayouts: [this.bgl0, this.bgl1] });
+    const shadowLayout = device.createPipelineLayout({ bindGroupLayouts: [this.bgl0] });
+    const creatureBuffers = [
+      { arrayStride: 68, attributes: [
+        { shaderLocation: 0, offset: 0, format: 'float32x3' }, { shaderLocation: 1, offset: 12, format: 'float32x3' },
+        { shaderLocation: 2, offset: 24, format: 'float32x3' }, { shaderLocation: 3, offset: 36, format: 'uint32x4' },
+        { shaderLocation: 4, offset: 52, format: 'float32x4' }] },
+      { arrayStride: 12, attributes: [{ shaderLocation: 5, offset: 0, format: 'float32x3' }] },
+    ];
+    const propBuffers = [{ arrayStride: 36, attributes: [
+      { shaderLocation: 0, offset: 0, format: 'float32x3' }, { shaderLocation: 1, offset: 12, format: 'float32x3' },
+      { shaderLocation: 2, offset: 24, format: 'float32x3' }] }];
+    const ms = { count: this.sampleCount };
+    const depth = { format: 'depth24plus', depthWriteEnabled: true, depthCompare: 'less' };
+    const target = [{ format: this.format }];
+    const m = this.module;
+    this.pipes = {
+      creature: device.createRenderPipeline({ layout: mainLayout, vertex: { module: m, entryPoint: 'vsCreature', buffers: creatureBuffers },
+        fragment: { module: m, entryPoint: 'fsCreature', targets: target }, primitive: { topology: 'triangle-list', cullMode: 'back' },
+        depthStencil: depth, multisample: ms }),
+      fur: device.createRenderPipeline({ layout: mainLayout, vertex: { module: m, entryPoint: 'vsCreature', buffers: creatureBuffers },
+        fragment: { module: m, entryPoint: 'fsFur', targets: target }, primitive: { topology: 'triangle-list', cullMode: 'back' },
+        depthStencil: depth, multisample: { count: this.sampleCount, alphaToCoverageEnabled: true } }),
+      shadow: device.createRenderPipeline({ layout: shadowLayout, vertex: { module: m, entryPoint: 'vsShadow', buffers: creatureBuffers },
+        primitive: { topology: 'triangle-list', cullMode: 'none' },
+        depthStencil: { format: 'depth32float', depthWriteEnabled: true, depthCompare: 'less', depthBias: 2, depthBiasSlopeScale: 2.5 } }),
+      propShadow: device.createRenderPipeline({ layout: shadowLayout, vertex: { module: m, entryPoint: 'vsPropShadow', buffers: propBuffers },
+        primitive: { topology: 'triangle-list', cullMode: 'none' },
+        depthStencil: { format: 'depth32float', depthWriteEnabled: true, depthCompare: 'less', depthBias: 2, depthBiasSlopeScale: 2.5 } }),
+      floor: device.createRenderPipeline({ layout: mainLayout, vertex: { module: m, entryPoint: 'vsFloor' },
+        fragment: { module: m, entryPoint: 'fsFloor', targets: target }, primitive: { topology: 'triangle-list', cullMode: 'none' },
+        depthStencil: depth, multisample: ms }),
+      prop: device.createRenderPipeline({ layout: mainLayout, vertex: { module: m, entryPoint: 'vsProp', buffers: propBuffers },
+        fragment: { module: m, entryPoint: 'fsProp', targets: target }, primitive: { topology: 'triangle-list', cullMode: 'back' },
+        depthStencil: depth, multisample: ms }),
+      lines: device.createRenderPipeline({ layout: mainLayout, vertex: { module: m, entryPoint: 'vsLines' },
+        fragment: { module: m, entryPoint: 'fsLines', targets: [{ format: this.format, blend: {
+          color: { srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha', operation: 'add' },
+          alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' } } }] },
+        primitive: { topology: 'line-list' }, depthStencil: { format: 'depth24plus', depthWriteEnabled: false, depthCompare: 'always' }, multisample: ms }),
+    };
+    this.creature = null; this.props = {};
+    this.rebuildBindGroup();
+    this.size = [0, 0];
+  }
+  async checkShaders() {
+    const info = await this.module.getCompilationInfo();
+    const errs = info.messages.filter((m) => m.type === 'error');
+    if (errs.length) throw new Error('Shader compilation failed:\n' + errs.map((e) => `${e.lineNum}:${e.linePos} ${e.message}`).join('\n'));
+  }
+  rebuildBindGroup() {
+    const c = this.creature;
+    this.bg0 = this.device.createBindGroup({ layout: this.bgl0, entries: [
+      { binding: 0, resource: { buffer: this.frameBuf } },
+      { binding: 1, resource: { buffer: c ? c.particleBuf : this.placeholder } },
+      { binding: 2, resource: { buffer: c ? c.lagBuf : this.placeholder } },
+      { binding: 3, resource: { buffer: c ? c.cellBuf : this.placeholder } },
+      { binding: 4, resource: { buffer: this.creatureBuf } },
+      { binding: 5, resource: { buffer: this.propsBuf } },
+    ] });
+  }
+  resize(w, h) {
+    if (w === this.size[0] && h === this.size[1]) return;
+    this.size = [w, h];
+    this.canvas.width = w; this.canvas.height = h;
+    this.msaaTex?.destroy(); this.depthTex?.destroy();
+    this.msaaTex = this.device.createTexture({ size: [w, h], format: this.format, sampleCount: this.sampleCount, usage: GPUTextureUsage.RENDER_ATTACHMENT });
+    this.depthTex = this.device.createTexture({ size: [w, h], format: 'depth24plus', sampleCount: this.sampleCount, usage: GPUTextureUsage.RENDER_ATTACHMENT });
+  }
+  /** Upload static creature geometry; dynamic buffers are written each frame. */
+  setCreature(creature) {
+    this.releaseCreature();
+    if (!creature) { this.rebuildBindGroup(); return; }
+    const d = this.device, U = GPUBufferUsage, A = creature.assets, lat = A.lattice;
+    const mk = (data, usage) => {
+      const b = d.createBuffer({ size: Math.max(16, Math.ceil(data.byteLength / 4) * 4), usage: usage | U.COPY_DST });
+      d.queue.writeBuffer(b, 0, data);
+      return b;
+    };
+    const c = {
+      vbuf: mk(A.vbuf, U.VERTEX), combBuf: mk(creature.fur ? creature.fur.comb : new Float32Array(A.vertexCount * 3), U.VERTEX),
+      ibuf: mk(A.indices, U.INDEX), indexCount: A.indices.length,
+      particleBuf: d.createBuffer({ size: lat.n * 16, usage: U.STORAGE | U.COPY_DST }),
+      lagBuf: d.createBuffer({ size: lat.n * 16, usage: U.STORAGE | U.COPY_DST }),
+      cellBuf: mk(new Uint32Array(lat.cells), U.STORAGE),
+      edgeBuf: mk(lat.edges, U.INDEX), edgeCount: lat.edges.length,
+      pos32: new Float32Array(lat.n * 4), lag32: new Float32Array(lat.n * 4),
+    };
+    // Static parts of the creature uniform: decals, groups, spots.
+    const f = new Float32Array(this.creatureData), u = new Uint32Array(this.creatureData);
+    f.fill(0);
+    f.set(A.spotData, 192);
+    u.set(A.groupData, 228);
+    f.set(A.decalData, 356);
+    this.creature = c;
+    // Prop meshes for this species' environment items.
+    for (const [id, m] of Object.entries(A.items)) this.props[id] = { vbuf: mk(m.data, U.VERTEX), ibuf: mk(m.indices, U.INDEX), count: m.indices.length };
+    this.rebuildBindGroup();
+  }
+  releaseCreature() {
+    const c = this.creature;
+    if (c) for (const k of ['vbuf', 'combBuf', 'ibuf', 'particleBuf', 'lagBuf', 'cellBuf', 'edgeBuf']) c[k].destroy();
+    for (const p of Object.values(this.props)) { p.vbuf.destroy(); p.ibuf.destroy(); }
+    this.creature = null; this.props = {};
+  }
+  render(S) {
+    const d = this.device, c = this.creature, F = this.frameData;
+    if (!this.msaaTex) return;
+    // ---- per-frame uniforms
+    F.set(S.viewProj, 0); F.set(S.lightViewProj, 16);
+    F.set([...S.eye, S.time], 32); F.set([...S.keyDir, S.shadowStrength], 36); F.set([...S.keyColor, 0], 40);
+    F.set([...S.fillDir, 0], 44); F.set([...S.fillColor, 0], 48); F.set([...S.skyColor, 0], 52); F.set([...S.groundColor, 0], 56);
+    F.set([...S.bgColor, 1], 60); F.set(S.fur, 64); F.set(S.env, 68); F.set(S.bounds, 72); F.set([...S.floorColor, 0], 76);
+    d.queue.writeBuffer(this.frameBuf, 0, F);
+    const cr = S.creature;
+    if (c && cr) {
+      const x = cr.sim.x, n = cr.sim.n, lag = cr.lag;
+      for (let i = 0; i < n; i++) {
+        c.pos32[4 * i] = x[3 * i]; c.pos32[4 * i + 1] = x[3 * i + 1]; c.pos32[4 * i + 2] = x[3 * i + 2];
+        c.lag32[4 * i] = lag[3 * i]; c.lag32[4 * i + 1] = lag[3 * i + 1]; c.lag32[4 * i + 2] = lag[3 * i + 2];
+      }
+      d.queue.writeBuffer(c.particleBuf, 0, c.pos32);
+      d.queue.writeBuffer(c.lagBuf, 0, c.lag32);
+      if (cr.fur && cr.fur.dirty) { d.queue.writeBuffer(c.combBuf, 0, cr.fur.comb); cr.fur.dirty = false; }
+      const cf = new Float32Array(this.creatureData);
+      cr.computeAttachments();
+      cf.set(cr.attachMats, 0);
+      cf.set(S.materials, 64);
+      cf.set(cr.expr, 224);
+      d.queue.writeBuffer(this.creatureBuf, 0, this.creatureData);
+    }
+    const items = S.items || [];
+    items.slice(0, 8).forEach((it, i) => this.propsData.set(it.matrix, i * 16));
+    if (items.length) d.queue.writeBuffer(this.propsBuf, 0, this.propsData);
+    const enc = d.createCommandEncoder();
+    // ---- shadow pass
+    const sp = enc.beginRenderPass({ colorAttachments: [], depthStencilAttachment: { view: this.shadowTex.createView(), depthClearValue: 1, depthLoadOp: 'clear', depthStoreOp: 'store' } });
+    sp.setBindGroup(0, this.bg0);
+    if (c && cr) {
+      sp.setPipeline(this.pipes.shadow);
+      sp.setVertexBuffer(0, c.vbuf); sp.setVertexBuffer(1, c.combBuf); sp.setIndexBuffer(c.ibuf, 'uint32');
+      sp.drawIndexed(c.indexCount, 1, 0, 0, 0);
+    }
+    if (items.length) {
+      sp.setPipeline(this.pipes.propShadow);
+      items.slice(0, 8).forEach((it, i) => { const m = this.props[it.type]; if (!m) return; sp.setVertexBuffer(0, m.vbuf); sp.setIndexBuffer(m.ibuf, 'uint32'); sp.drawIndexed(m.count, 1, 0, 0, i); });
+    }
+    sp.end();
+    // ---- main pass
+    const bg = S.bgClear;
+    const rp = enc.beginRenderPass({
+      colorAttachments: [{ view: this.msaaTex.createView(), resolveTarget: this.ctx.getCurrentTexture().createView(), clearValue: { r: bg[0], g: bg[1], b: bg[2], a: 1 }, loadOp: 'clear', storeOp: 'discard' }],
+      depthStencilAttachment: { view: this.depthTex.createView(), depthClearValue: 1, depthLoadOp: 'clear', depthStoreOp: 'discard' },
+    });
+    rp.setBindGroup(0, this.bg0); rp.setBindGroup(1, this.bg1);
+    rp.setPipeline(this.pipes.floor); rp.draw(6);
+    if (c && cr) {
+      rp.setPipeline(this.pipes.creature);
+      rp.setVertexBuffer(0, c.vbuf); rp.setVertexBuffer(1, c.combBuf); rp.setIndexBuffer(c.ibuf, 'uint32');
+      rp.drawIndexed(c.indexCount, 1, 0, 0, 0);
+    }
+    if (items.length) {
+      rp.setPipeline(this.pipes.prop);
+      items.slice(0, 8).forEach((it, i) => { const m = this.props[it.type]; if (!m) return; rp.setVertexBuffer(0, m.vbuf); rp.setIndexBuffer(m.ibuf, 'uint32'); rp.drawIndexed(m.count, 1, 0, 0, i); });
+    }
+    if (c && cr && S.fur[1] > 0 && S.fur[0] > 0) {
+      rp.setPipeline(this.pipes.fur);
+      rp.setVertexBuffer(0, c.vbuf); rp.setVertexBuffer(1, c.combBuf); rp.setIndexBuffer(c.ibuf, 'uint32');
+      rp.drawIndexed(c.indexCount, S.fur[1], 0, 0, 1);
+    }
+    if (c && cr && S.debugMesh) {
+      rp.setPipeline(this.pipes.lines); rp.setIndexBuffer(c.edgeBuf, 'uint32'); rp.drawIndexed(c.edgeCount);
+    }
+    rp.end();
+    d.queue.submit([enc.finish()]);
+  }
+  destroy() {
+    this.releaseCreature();
+    for (const t of [this.msaaTex, this.depthTex, this.shadowTex]) t?.destroy();
+    for (const b of [this.frameBuf, this.creatureBuf, this.propsBuf, this.placeholder]) b.destroy();
+    this.device.destroy();
+  }
+}
+
+/* ---------- exports ---------------------------------------------------- */
+return {
+  math: { clamp, lerp, smoothstep, wrapAngle, damp, v3, mat4, makeRng, hexToLinear },
+  SDF, surfaceNets, surfacePoint, buildLattice, SoftBody, Locomotion, BehaviorMachine, Environment, ENVIRONMENTS,
+  MATERIAL_TYPES, buildMaterialTable, buildCreatureAssets, TOOLS, ENGINE_ACTIONS, Creature, Renderer, GPUUnavailable,
+  registry, registerSpecies, validateSpecies,
+};
+})();
+if (typeof module !== 'undefined') module.exports = Engine;
+
+</script>
+<!-- ===== SPECIES DEFINITIONS ===== -->
+<script id="species-src">
+'use strict';
+/* =========================================================================
+   SPECIES DEFINITIONS
+   Everything animal-specific lives here: anatomy (SDFs, regions, joints,
+   decals), physics tuning, locomotion choice, behaviours, interaction rules,
+   materials, controls and read-outs. The engine above never branches on a
+   species id.
+   ========================================================================= */
+
+/* ---------------------------------------------------------------------- */
+/* 1. PLUSH HAMMERHEAD — complete species                                  */
+/* ---------------------------------------------------------------------- */
+const PlushHammerhead = (() => {
+  const { SDF } = Engine, { smoothstep, clamp, lerp, v3 } = Engine.math;
+  // Rest space: +x toward the head, +y up, z lateral. 1 unit ≈ 35 cm.
+  const W = 0.5;
+  const hammerMid = (z) => 0.03 - 0.03 * Math.min((z / W) ** 2, 1.4);
+  const DORSAL = [0.17, 0.12, 0.1, 0.32, 0.0, 0.47, -0.12, 0.57, -0.27, 0.64, -0.21, 0.52, -0.16, 0.38, -0.15, 0.24, -0.21, 0.12];
+  const CAUDAL = [-0.84, 0.1, -1.02, 0.22, -1.2, 0.38, -1.37, 0.53, -1.3, 0.4, -1.21, 0.22, -1.14, 0.08, -1.19, -0.07, -1.18, -0.2,
+    -1.06, -0.12, -0.93, -0.03, -0.84, 0.0];
+  const PECT = [0.12, -0.04, 0.08, 0.15, -0.02, 0.31, -0.13, 0.42, -0.18, 0.38, -0.15, 0.2, -0.12, -0.04];
+  const fDorsal = SDF.frame([0, 0, 0], [1, 0, 0], [0, 1, 0]);
+  const fPectR = SDF.frame([0.1, -0.12, 0.12], [1, 0, 0], [-0.35, -0.42, 1]);
+  const fPectL = SDF.frame([0.1, -0.12, -0.12], [1, 0, 0], [-0.35, -0.42, -1]);
+  const FISH_TAIL = [-0.06, 0, -0.118, 0.048, -0.102, 0, -0.118, -0.048];
+  const fFish = SDF.frame([0, 0, 0], [1, 0, 0], [0, 1, 0]);
+
+  const torso = (x, y, z) => {
+    let d = SDF.ellipsoid(x, y, z, 0.4, 0.0, 0, 0.28, 0.14, 0.17);
+    d = SDF.smin(d, SDF.ellipsoid(x, y, z, 0.06, 0.0, 0, 0.42, 0.21, 0.21), 0.14);
+    d = SDF.smin(d, SDF.ellipsoid(x, y, z, -0.38, 0.01, 0, 0.4, 0.16, 0.15), 0.14);
+    return SDF.smin(d, SDF.ellipsoid(x, y, z, -0.8, 0.04, 0, 0.3, 0.075, 0.07), 0.12);
+  };
+  const hammer = (x, y, z) => {
+    const az = Math.abs(z), zn = z / 0.55;
+    const xf = 0.8 - 0.16 * zn * zn - 0.035 * Math.exp(-((z / 0.07) ** 2));
+    const xb = 0.53 - 0.13 * zn * zn;
+    let d2 = SDF.smax(x - xf, xb - x, 0.06);
+    d2 = SDF.smax(d2, az - W, 0.1);
+    const h = 0.062 - 0.018 * Math.min(az / W, 1);
+    const d = SDF.extrude(d2, y - hammerMid(z), h, h * 0.9);
+    return SDF.smin(d, SDF.ellipsoid(x, y, az, 0.585, 0.02, 0.5, 0.11, 0.07, 0.085), 0.06);
+  };
+  const eye = (x, y, z) => SDF.sphere(x, y, Math.abs(z), 0.588, 0.034, 0.6, 0.05);
+  const dorsal = (x, y, z) => SDF.planar(x, y, z, fDorsal, DORSAL, 0.045, 0.04, 0.09);
+  const caudal = (x, y, z) => SDF.planar(x, y, z, fDorsal, CAUDAL, 0.04, 0.035, 0.08);
+  const pect = (x, y, z) => SDF.planar(x, y, z, z > 0 ? fPectR : fPectL, PECT, 0.032, 0.028, 0.08);
+  const cavity = (x, y, z) => SDF.ellipsoid(x, y, z, 0.54, -0.085, 0, 0.065, 0.045, 0.14);
+  const body = (x, y, z) => {
+    let d = SDF.smin(torso(x, y, z), hammer(x, y, z), 0.12);
+    d = SDF.smin(d, dorsal(x, y, z), 0.07);
+    d = SDF.smin(d, caudal(x, y, z), 0.06);
+    d = SDF.smin(d, pect(x, y, z), 0.06);
+    d = SDF.smax(d, -cavity(x, y, z), 0.025);
+    return Math.min(d, eye(x, y, z));
+  };
+  const finField = (x, y, z) => Math.min(torso(x, y, z), hammer(x, y, z)) - 0.004 - Math.min(dorsal(x, y, z), caudal(x, y, z), pect(x, y, z));
+  const isFin = (x, y, z) => finField(x, y, z) > 0;
+  const seamY = (x, z) => lerp(lerp(-0.02, -0.05, smoothstep(-0.9, 0.0, x)), hammerMid(z), smoothstep(0.42, 0.56, x));
+  // Lower jaw: a smiling lip arc with felt teeth; upper teeth hang from the palate.
+  const arc = (t) => [0.565 - 0.05 * t * t, -0.112 + 0.03 * t * t, 0.12 * t];
+  const arcU = (t) => [0.57 - 0.05 * t * t, -0.058 + 0.025 * t * t, 0.115 * t];
+  const LOWER_T = [-0.8, -0.53, -0.27, 0, 0.27, 0.53, 0.8], UPPER_T = [-0.67, -0.4, -0.13, 0.13, 0.4, 0.67];
+  const lip = (x, y, z) => {
+    let d = Infinity;
+    for (let i = 0; i < 6; i++) d = Math.min(d, SDF.cone(x, y, z, arc(-1 + i / 3), arc(-1 + (i + 1) / 3), 0.026, 0.026));
+    return SDF.smin(d, SDF.ellipsoid(x, y, z, 0.5, -0.128, 0, 0.075, 0.03, 0.11), 0.03);
+  };
+  const lowerTeeth = (x, y, z) => {
+    let d = Infinity;
+    for (const t of LOWER_T) { const b = v3.add(arc(t), [0, 0.016, 0]); d = Math.min(d, SDF.cone(x, y, z, b, v3.add(b, [0.004, 0.03, 0]), 0.012, 0.002)); }
+    return d;
+  };
+  const upperTeeth = (x, y, z) => {
+    let d = Infinity;
+    for (const t of UPPER_T) { const b = arcU(t); d = Math.min(d, SDF.cone(x, y, z, b, v3.add(b, [0.004, -0.028, 0]), 0.011, 0.002)); }
+    return d;
+  };
+  const jaw = (x, y, z) => Math.min(lip(x, y, z), lowerTeeth(x, y, z));
+
+  const finFlow = (x, y, z) => {
+    const dT = Math.min(torso(x, y, z), hammer(x, y, z)), dD = dorsal(x, y, z), dC = caudal(x, y, z), dP = pect(x, y, z);
+    const m = Math.min(dD, dC, dP);
+    if (m > dT) return [-1, 0, 0];
+    if (m === dD) return [-0.55, 1, 0];
+    if (m === dC) return [-1, 0.35 * Math.sign(y - 0.05), 0];
+    return [-0.4, -0.35, Math.sign(z)];
+  };
+
+  return {
+    id: 'hammerhead', name: 'Plush Hammerhead', category: 'Cartilaginous fish', status: 'complete',
+    description: 'Minky hammerhead with a felt-lined smile, articulated jaw and glass eyes on its cephalofoil.',
+    display: {
+      kicker: 'No. 01 — Sphyrnidae', title: ['Plush', 'Hammerhead'], theme: { accent: '#8a5a33' },
+      description: 'A minky hammerhead with a sewn cream belly, a felt-lined smile and glass eyes on the tips of its hammer. ' +
+        'It swims on a travelling S-wave, sweeps the floor for felt fish, and wriggles and blushes when you boop the middle of its head.',
+    },
+    environment: { preset: 'tank', spawn: { pos: [0.2, 1.2, 0.3], yaw: 0.4 }, camera: { target: [0, 0.85, 0], distance: 6.2, yaw: 0.62, pitch: 0.32, follow: 0.55 } },
+    createState: () => ({ fishEaten: 0 }),
+
+    anatomy: {
+      physicsSdf: body,
+      parts: [
+        { id: 'body', sdf: body, resolution: 0.0165, bounds: { min: [-1.44, -0.29, -0.7], max: [0.86, 0.7, 0.7] },
+          region(x, y, z) {
+            if (eye(x, y, z) < 0.006) return 'eye';
+            if (cavity(x, y, z) < 0.006) return 'mouth';
+            if (isFin(x, y, z)) return 'fin';
+            return y < seamY(x, z) ? 'belly' : 'body';
+          },
+          // Signed fields resolved per fragment so the belly seam and the lip line stay crisp.
+          boundaries: [
+            { field: (x, y, z) => finField(x, y, z), positive: 'fin', negative: (x, y, z) => (y < seamY(x, z) ? 'belly' : 'body'), band: 0.04 },
+            { field: (x, y, z) => cavity(x, y, z) - 0.006, negative: 'mouth', positive: (x, y, z) => (y < seamY(x, z) ? 'belly' : 'body'), band: 0.05 },
+            { field: (x, y, z) => y - seamY(x, z), positive: 'body', negative: 'belly', band: 0.05, where: (x, y, z) => !isFin(x, y, z) && eye(x, y, z) > 0.006 },
+          ] },
+        { id: 'jaw', sdf: jaw, resolution: 0.0055, bounds: { min: [0.38, -0.18, -0.17], max: [0.64, -0.03, 0.17] },
+          attach: { anchor: 'hinge', joint: 'jaw' }, fur: false,
+          region(x, y, z) {
+            if (lowerTeeth(x, y, z) < 0.003) return 'tooth';
+            const a = arc(clamp(z / 0.12, -1, 1));
+            return y > a[1] + 0.006 && x > 0.47 ? 'mouth' : 'belly';
+          } },
+        { id: 'upperTeeth', sdf: upperTeeth, resolution: 0.005, bounds: { min: [0.49, -0.1, -0.11], max: [0.6, -0.02, 0.11] },
+          attach: { anchor: 'hinge' }, fur: false, region: () => 'tooth' },
+      ],
+      anchors: { hinge: [0.44, -0.095, 0] },
+      joints: { jaw: { axis: [0, 0, 1], min: 0, max: -0.52, stiffness: 320, damping: 22 } },
+      landmarks: { mouth: [0.56, -0.09, 0], head: [0.64, 0.03, 0], tail: [-1.0, 0.05, 0] },
+      expressions: { channels: ['blush'], spots: [
+        { center: [0.69, 0.09, 0.17], radius: 0.085, color: '#f07c93', channel: 'blush' },
+        { center: [0.69, 0.09, -0.17], radius: 0.085, color: '#f07c93', channel: 'blush' }] },
+      decals({ surfacePoint, sdf }) {
+        const out = [];
+        for (const side of [1, -1]) {
+          const S = side > 0 ? 'R' : 'L';
+          for (let i = 0; i < 5; i++) {
+            const xg = 0.31 - i * 0.045, pts = [];
+            for (const yy of [0.085, 0.03, -0.025, -0.07]) { const p = surfacePoint(sdf, [xg + 0.02 * (yy / 0.07) - 0.006 * (yy / 0.07) ** 2, yy, 0], [0, 0, side], 0.6, 0.004); if (p) pts.push(p); }
+            if (pts.length > 1) out.push({ group: 'gills' + S, region: 'gill', width: 0.0095, points: pts });
+          }
+          for (const [g, a, b] of [['seamF' + S, -0.2, 0.42], ['seamB' + S, -0.88, -0.2]]) {
+            const pts = [];
+            for (let k = 0; k <= 9; k++) {
+              const x = lerp(a, b, k / 9), p = surfacePoint(sdf, [x, seamY(x, 0), 0], [0, 0, side], 0.6, 0.004);
+              if (p) pts.push(p);
+            }
+            out.push({ group: g, region: 'seam', width: 0.0055, points: pts, dash: { period: 0.024, duty: 0.58 } });
+          }
+        }
+        for (const [g, a, b] of [['rimL', -0.5, 0], ['rimR', 0, 0.5]]) {
+          const pts = [];
+          for (let k = 0; k <= 11; k++) {
+            const z = lerp(a, b, k / 11), p = surfacePoint(sdf, [0.6, hammerMid(z), z], [1, 0, 0], 0.4, 0.003);
+            if (p) pts.push(p);
+          }
+          out.push({ group: g, region: 'seam', width: 0.0048, points: pts, dash: { period: 0.024, duty: 0.58 } });
+        }
+        return out;
+      },
+    },
+
+    physics: {
+      latticeSpacing: 0.08, substeps: 8,
+      shapeStiffness: [0.05, 0.42], volumeCompliance: [6e-8, 6e-10], inflate: [0.93, 1.07], grabCompliance: 0.006,
+      unitMeters: 0.35, fillGramsPerLitre: 28, shellGrams: 140,
+      stuffingAt(x, y, z) {
+        const dB = Math.min(torso(x, y, z), hammer(x, y, z)), dF = Math.min(dorsal(x, y, z), caudal(x, y, z), pect(x, y, z));
+        if (dF < dB) return { density: 0.45, stiffness: 0.5 };      // fins: lightly stuffed, floppier
+        if (x > 0.45) return { density: 1.25, stiffness: 1.5 };     // packed head keeps the hammer flat
+        if (x < -0.75) return { density: 0.7, stiffness: 0.75 };
+        return { density: 1, stiffness: 1 };
+      },
+    },
+
+    locomotion: {
+      type: 'swim', headX: 0.52, length: 1.75, waveLength: 0.95, amp: [0.03, 0.06, 0.32], baseFreq: 1.1, neck: 0.32,
+      turnBend: 0.5, wriggleAmp: 0.22, wriggleFreq: 4.5, headOffset: 0.55, thrust: 2.0, drag: [1.3, 9, 6],
+      turnGain: 11, turnDamp: 2, maxTurn: 12, pitchGain: 7, pitchDamp: 3, maxPitch: 0.45, rollGain: 16, rollDamp: 4, wallMargin: 0.95, liftGain: 2.2, liftDamp: 1.2, maxLift: 1.6,
+    },
+
+    fur: {
+      shells: 10, length: 0.016, density: 320, droop: 0.02, combRadius: 0.09,
+      lagStiffness: 140, lagDamping: 0.35, inertia: 0.012, flow: 0.22,
+      direction: (x, y, z) => finFlow(x, y, z),
+    },
+
+    materials: {
+      regions: {
+        body: { type: 'plush' }, belly: { type: 'plush', fur: 0.75 }, fin: { type: 'plush', fur: 0.7 },
+        eye: { type: 'glass' }, mouth: { type: 'felt' }, tooth: { type: 'felt', sheen: 0.45 },
+        gill: { type: 'embroidery' }, seam: { type: 'stitch' },
+      },
+      defaultPreset: 'bronze',
+      presets: [
+        { id: 'bronze', label: 'Bronze', colors: { body: '#8d6239', belly: '#efe2c7', fin: '#7c5331', eye: '#1b120e', mouth: '#a8434f', tooth: '#fbf6ea', gill: '#4a2f1d', seam: '#5e4128' } },
+        { id: 'lagoon', label: 'Lagoon', colors: { body: '#3f7c86', belly: '#eee6d1', fin: '#336771', eye: '#101618', mouth: '#ad4858', tooth: '#fbf6ea', gill: '#1f4249', seam: '#2b545b' } },
+        { id: 'sunset', label: 'Sunset', colors: { body: '#df7a53', belly: '#f7e5c9', fin: '#c95f3e', eye: '#1c110d', mouth: '#9b3646', tooth: '#fbf6ea', gill: '#7a321f', seam: '#8d4128' } },
+      ],
+    },
+
+    behaviors: {
+      initial: 'cruise',
+      states: {
+        cruise: {
+          kind: 'autonomous', priority: 0, resumable: true, label: 'Cruising',
+          enter(ctx, d) { d.scanAt = ctx.time + 10 + ctx.rand() * 8; d.wp = null; },
+          resume(ctx, d) { d.scanAt = Math.max(d.scanAt, ctx.time + 6); d.wp = null; },
+          update(ctx, d) {
+            const I = ctx.intent, b = ctx.body, E = ctx.env;
+            if (ctx.flags.circle) {
+              const c = E.center, a = Math.atan2(b.c[2] - c[2], b.c[0] - c[0]) - 0.75;
+              I.target = [c[0] + 1.75 * Math.cos(a), 1.15 + 0.3 * Math.sin(ctx.time * 0.27), c[2] + 1.45 * Math.sin(a)];
+            } else {
+              if (!d.wp || v3.dist(d.wp, b.c) < 0.8) d.wp = E.randomPoint(1.1, [0.25, 0.7]);
+              I.target = d.wp;
+            }
+            I.speed = 0.55;
+            if (ctx.time > d.scanAt) return { next: 'scan' };
+          },
+        },
+        scan: {
+          kind: 'autonomous', priority: 2, duration: 6, label: 'Scanning the floor',
+          update(ctx, d, dt, t) {
+            const I = ctx.intent, b = ctx.body, f = v3.norm([b.f[0], 0, b.f[2]]);
+            I.target = [b.c[0] + f[0] * 1.6 - f[2] * 0.4 * Math.sin(t * 0.5), ctx.env.floorY + 0.3, b.c[2] + f[2] * 1.6 + f[0] * 0.4 * Math.sin(t * 0.5)];
+            I.headYaw = 0.5 * Math.sin(t * 2.6) * smoothstep(0, 0.8, t);
+            I.speed = 0.35; I.beat = 0.85;
+          },
+        },
+        hunt: {
+          kind: 'environment', priority: 5, label: 'Hunting a felt fish',
+          trigger: (ctx) => !!ctx.env.nearest('feltFish', ctx.body.c),
+          update(ctx, d, dt, t) {
+            const I = ctx.intent, fish = ctx.env.nearest('feltFish', ctx.body.c);
+            if (!fish) return 'done';
+            const mouth = ctx.landmark('mouth'), dist = v3.dist(mouth, fish.pos);
+            I.target = [fish.pos[0], fish.pos[1] + 0.13, fish.pos[2]];
+            if (dist > 1.3) { I.speed = 0.75; I.beat = 1.2; I.headYaw = 0.35 * Math.sin(t * 3.2); }
+            else { I.speed = 1.05; I.beat = 1.9; I.joints.jaw = clamp((1.1 - dist) / 0.55, 0, 1); }
+            if (dist < 0.34) ctx.env.attract(fish, mouth, 5, dt);
+            if (dist < 0.12) { ctx.env.consume(fish, mouth); ctx.state.fishEaten++; return { next: 'chomp' }; }
+            if (t > 30) return 'done';
+          },
+        },
+        dash: {
+          kind: 'user', priority: 6, duration: 1.6, label: 'Dashing',
+          enter(ctx, d) { const b = ctx.body, f = v3.norm([b.f[0], 0, b.f[2]]); d.target = [b.c[0] + f[0] * 4, b.c[1], b.c[2] + f[2] * 4]; },
+          update(ctx, d) { const I = ctx.intent; I.target = d.target; I.speed = 2.6; I.beat = 2.6; I.amplitude = 1.25; },
+        },
+        chomp: {
+          kind: 'user', priority: 6, duration: 0.8, label: 'Chomp!',
+          update(ctx, d, dt, t) { const I = ctx.intent; I.joints.jaw = t < 0.3 ? 1 : 0; I.speed = 0.3; },
+        },
+        thrash: {
+          kind: 'reactive', priority: 9, label: 'Thrashing',
+          update(ctx, d, dt, t) {
+            const I = ctx.intent;
+            I.speed = 0; I.beat = 3.2; I.amplitude = 2.1; I.wriggle = 0.5; I.joints.jaw = 0.35 + 0.35 * Math.sin(t * 9);
+            if (!ctx.interaction.grabbed) return { next: 'flee' };
+          },
+        },
+        flee: {
+          kind: 'reactive', priority: 8, duration: 1.8, label: 'Bolting away',
+          enter(ctx, d) { const b = ctx.body, f = v3.norm([b.f[0], 0, b.f[2]]); d.target = [b.c[0] + f[0] * 3.5, 1.2, b.c[2] + f[2] * 3.5]; },
+          update(ctx, d) { const I = ctx.intent; I.target = d.target; I.speed = 2.4; I.beat = 2.7; I.amplitude = 1.2; },
+        },
+        held: {
+          kind: 'reactive', priority: 7, label: 'Being held',
+          update(ctx) { const I = ctx.intent; I.speed = 0; I.beat = 0.6; I.amplitude = 0.6; if (!ctx.interaction.grabbed) return 'done'; },
+        },
+        boop: {
+          kind: 'reactive', priority: 7, label: 'Booped!',
+          enter(ctx, d) { d.until = ctx.time + 2.0; },
+          retrigger(ctx, d) { d.until = ctx.time + 2.0; },
+          update(ctx, d) {
+            const I = ctx.intent;
+            I.wriggle = 1; I.expr.blush = 1; I.speed = 0.15; I.beat = 1.4; I.amplitude = 0.55; I.joints.jaw = 0.22;
+            if (ctx.time > d.until) return 'done';
+          },
+        },
+        flinch: {
+          kind: 'reactive', priority: 4, duration: 0.8, label: 'Startled',
+          update(ctx) { const I = ctx.intent; I.speed = 1.4; I.beat = 2; },
+        },
+        soothed: {
+          kind: 'reactive', priority: 3, label: 'Enjoying a brush',
+          enter(ctx, d) { d.until = ctx.time + 2; },
+          retrigger(ctx, d) { d.until = ctx.time + 2; },
+          update(ctx, d) { const I = ctx.intent; I.speed = 0.12; I.beat = 0.5; I.amplitude = 0.6; I.expr.blush = 0.35; if (ctx.time > d.until) return 'done'; },
+        },
+      },
+    },
+
+    interactions: {
+      tools: ['hand', 'finger', 'comb'], pickRadius: 0.032,
+      regions: [
+        { id: 'hammerCenter', label: 'Hammer centre — boop zone', sphere: [0.66, 0.03, 0, 0.17] },
+        { id: 'hammer', label: 'Cephalofoil', box: { min: [0.45, -0.2, -0.7], max: [0.95, 0.2, 0.7] } },
+        { id: 'tail', label: 'Tail', box: { min: [-1.6, -0.5, -0.4], max: [-0.55, 0.8, 0.4] } },
+        { id: 'dorsal', label: 'Dorsal fin', box: { min: [-0.35, 0.18, -0.1], max: [0.2, 0.75, 0.1] } },
+        { id: 'belly', label: 'Belly', test: (x, y, z) => y < seamY(x, z) },
+      ],
+      reactions: [
+        { on: 'grab', region: 'tail', behavior: 'thrash' },
+        { on: 'grab', behavior: 'held' },
+        { on: 'poke', region: 'hammerCenter', behavior: 'boop' },
+        { on: 'stroke', region: 'hammerCenter', behavior: 'boop' },
+        { on: 'poke', behavior: 'flinch' },
+        { on: 'comb', behavior: 'soothed' },
+      ],
+    },
+
+    items: {
+      feltFish: {
+        label: 'Felt fish', radius: 0.045, buoyancy: 0.8, drag: 2.4, resolution: 0.0075,
+        bounds: { min: [-0.135, -0.07, -0.05], max: [0.105, 0.07, 0.05] },
+        sdf(x, y, z) {
+          let d = SDF.ellipsoid(x, y, z, 0.0, 0, 0, 0.08, 0.045, 0.022);
+          d = SDF.smin(d, SDF.planar(x, y, z, fFish, FISH_TAIL, 0.012, 0.01, 0), 0.02);
+          return Math.min(d, SDF.sphere(x, y, Math.abs(z), 0.045, 0.012, 0.018, 0.009));
+        },
+        color(x, y, z) {
+          if (SDF.sphere(x, y, Math.abs(z), 0.045, 0.012, 0.018, 0.009) < 0.002) return '#111111';
+          return Math.abs(x + 0.01) < 0.012 ? '#f6e6c4' : '#f0a03c';
+        },
+      },
+    },
+
+    actions: {
+      feed: { run: (ctx) => ctx.env.spawn('feltFish'), enabled: (ctx) => ctx.env.count('feltFish') < 3 },
+      dash: { run: (ctx) => ctx.behaviors.request('dash') },
+      scan: { run: (ctx) => ctx.behaviors.request('scan') },
+      chomp: { run: (ctx) => ctx.behaviors.request('chomp') },
+    },
+
+    controls: [
+      { id: 'feed', type: 'button', label: 'Feed', action: 'feed', group: 'Actions', primary: true, hint: 'Drop a felt fish into the tank' },
+      { id: 'dash', type: 'button', label: 'Dash', action: 'dash', group: 'Actions', hint: 'Burst of rapid tail beats' },
+      { id: 'scan', type: 'button', label: 'Scan', action: 'scan', group: 'Actions', hint: 'Sweep the hammer over the floor' },
+      { id: 'chomp', type: 'button', label: 'Chomp', action: 'chomp', group: 'Actions', hint: 'Open and snap the jaw' },
+      { id: 'smooth', type: 'button', label: 'Smooth fur', action: 'engine.smoothFur', group: 'Actions', hint: 'Reset the combed nap' },
+      { id: 'circle', type: 'toggle', label: 'Circle', bind: 'flags.circle', default: true, group: 'Behaviour', hint: 'Swim laps around the tank instead of wandering' },
+      { id: 'stuffing', type: 'slider', label: 'Stuffing', bind: 'physics.stuffing', min: 0.3, max: 1.5, step: 0.01, default: 1, group: 'Body', format: (v) => `${Math.round(v * 100)}%` },
+      { id: 'pile', type: 'slider', label: 'Pile', bind: 'fur.pile', min: 0, max: 2, step: 0.01, default: 1, group: 'Body', format: (v) => `${(v * 0.016 * 350).toFixed(1)} mm` },
+      { id: 'tailBeat', type: 'slider', label: 'Tail beat', bind: 'locomotion.beat', min: 0.4, max: 2, step: 0.01, default: 1, group: 'Body', format: (v) => `${v.toFixed(2)}×` },
+      { id: 'fabric', type: 'preset', label: 'Fabric', bind: 'material.preset', default: 'bronze', group: 'Fabric' },
+    ],
+
+    readouts: [
+      { id: 'mass', label: 'Mass', unit: 'g', get: (r) => r.metrics.mass, format: (v) => v.toFixed(0) },
+      { id: 'volume', label: 'Volume', unit: 'L', get: (r) => r.metrics.volume, format: (v) => v.toFixed(2) },
+      { id: 'bpm', label: 'Tail beat', unit: 'bpm', get: (r) => r.locomotion.beatsPerMinute, format: (v) => v.toFixed(0) },
+      { id: 'fish', label: 'Fish eaten', unit: '', get: (r) => r.state.fishEaten, format: (v) => String(v) },
+    ],
+
+    notes: {
+      anatomy: 'Body, hammer, fins and mouth cavity are one blended signed-distance field meshed with surface nets (~1.6 cm grid). ' +
+        'The lower jaw and the upper teeth are separate finer meshes rigidly attached at a hinge.',
+      implemented: [
+        'Swimming is driven by a travelling S-wave posed into the lattice rest shape; the body follows it through shape matching, so the head yaws and the fins lag on their own.',
+        'Steering bends the body into the turn and turns the head; scanning sweeps only the head segment.',
+        'Hunting is environment-triggered by a felt fish in the tank: the shark approaches while scanning, speeds up, opens its jaw, then pulls the fish in by suction and eats it.',
+        'When you grab it by the tail it thrashes (beat ×3.2), then bolts away once you let go. A boop on the centre of the hammer makes it wriggle and blush.',
+        'Gills, the belly seam and the hammer rim are drawn as embroidery and stitch decals that flatten the pile under them.',
+      ],
+      approximations: [
+        'There is no fluid simulation. Thrust comes partly from anisotropic drag on the undulating lattice and partly from a propulsive force along the body axis, scaled by beat frequency.',
+        'The jaw is a 1-DoF damped joint, rigidly skinned to the lattice frame at its hinge. It is not part of the soft lattice.',
+        'Suction feeding pulls the fish toward the mouth kinematically once it is within 0.34 units.',
+      ],
+    },
+  };
+})();
+
+/* ---------------------------------------------------------------------- */
+/* 2. DUST BUNNY — minimal second species (validation fixture)            */
+/*    Different anatomy (ears, no fins, no jaw), a different locomotion    */
+/*    capability (hop under gravity), different environment, behaviours,  */
+/*    reactions and controls — with zero engine changes.                  */
+/* ---------------------------------------------------------------------- */
+const DustBunny = (() => {
+  const { SDF } = Engine, { smoothstep, v3 } = Engine.math;
+  const EAR = [0.06, 0, 0.068, 0.17, 0.045, 0.33, 0, 0.38, -0.045, 0.33, -0.068, 0.17, -0.06, 0];
+  const fEarR = SDF.frame([0.2, 0.56, 0.075], [0, 0, 1], [-0.3, 1, 0.22]);
+  const fEarL = SDF.frame([0.2, 0.56, -0.075], [0, 0, -1], [-0.3, 1, -0.22]);
+  const core = (x, y, z) => {
+    const az = Math.abs(z);
+    let d = SDF.ellipsoid(x, y, z, -0.04, 0.27, 0, 0.34, 0.26, 0.27);
+    d = SDF.smin(d, SDF.ellipsoid(x, y, az, -0.14, 0.2, 0.13, 0.2, 0.17, 0.12), 0.08);
+    d = SDF.smin(d, SDF.ellipsoid(x, y, z, 0.27, 0.47, 0, 0.19, 0.17, 0.18), 0.1);
+    d = SDF.smin(d, SDF.ellipsoid(x, y, az, 0.33, 0.42, 0.08, 0.1, 0.08, 0.08), 0.05);
+    d = SDF.smin(d, SDF.ellipsoid(x, y, az, 0.13, 0.05, 0.11, 0.13, 0.05, 0.065), 0.06);
+    return SDF.smin(d, SDF.ellipsoid(x, y, az, -0.13, 0.045, 0.17, 0.18, 0.045, 0.07), 0.06);
+  };
+  const ears = (x, y, z) => SDF.planar(x, y, z, z > 0 ? fEarR : fEarL, EAR, 0.024, 0.021, 0.04);
+  const puff = (x, y, z) => SDF.sphere(x, y, z, -0.38, 0.28, 0, 0.085);
+  const eye = (x, y, z) => SDF.sphere(x, y, Math.abs(z), 0.385, 0.5, 0.105, 0.031);
+  const body = (x, y, z) => Math.min(SDF.smin(SDF.smin(core(x, y, z), ears(x, y, z), 0.05), puff(x, y, z), 0.04), eye(x, y, z));
+  const earLocal = (x, y, z) => {
+    const F = z > 0 ? fEarR : fEarL, dx = x - F.o[0], dy = y - F.o[1], dz = z - F.o[2];
+    return [dx * F.u[0] + dy * F.u[1] + dz * F.u[2], dx * F.v[0] + dy * F.v[1] + dz * F.v[2]];
+  };
+
+  return {
+    id: 'dust-bunny', name: 'Dust Bunny', category: 'Lagomorph', status: 'prototype',
+    description: 'Minimal second species that proves the engine is not shark-shaped.',
+    display: {
+      kicker: 'Prototype — validation fixture', title: ['Dust', 'Bunny'], theme: { accent: '#7d6a8c' },
+      description: 'A deliberately small second species: floppy lattice ears, a hop-based locomotion capability under gravity, ' +
+        'and its own reactions — built from a definition alone, with no changes to the engine.',
+    },
+    environment: { preset: 'studio', spawn: { pos: [0, 0.31, 0], yaw: 0.6 }, camera: { target: [0, 0.4, 0], distance: 4.6, yaw: 0.7, pitch: 0.36, follow: 0.7 } },
+    createState: () => ({}),
+    anatomy: {
+      physicsSdf: body,
+      parts: [{ id: 'body', sdf: body, resolution: 0.0135, bounds: { min: [-0.5, -0.02, -0.32], max: [0.52, 0.98, 0.32] },
+        region(x, y, z) {
+          if (eye(x, y, z) < 0.005) return 'eye';
+          if (puff(x, y, z) < core(x, y, z) - 0.005) return 'puff';
+          if (ears(x, y, z) < core(x, y, z) - 0.01) {
+            const [u, v] = earLocal(x, y, z);
+            return x > (z > 0 ? fEarR : fEarL).o[0] - 0.3 * v * 0.29 && Math.abs(u) < 0.04 && v > 0.04 && v < 0.33 ? 'earInner' : 'body';
+          }
+          return y < 0.3 && x > 0.05 && Math.abs(z) < 0.16 ? 'belly' : 'body';
+        } }],
+      anchors: {}, joints: {},
+      landmarks: { nose: [0.45, 0.45, 0] },
+      expressions: { channels: ['content'], spots: [
+        { center: [0.37, 0.42, 0.13], radius: 0.06, color: '#f2a1a8', channel: 'content' },
+        { center: [0.37, 0.42, -0.13], radius: 0.06, color: '#f2a1a8', channel: 'content' }] },
+      decals({ surfacePoint, sdf }) {
+        const tip = surfacePoint(sdf, [0.25, 0.445, 0], [1, 0, 0], 0.4, 0.003);
+        const ys = surfacePoint(sdf, [0.25, 0.405, 0], [1, 0, 0], 0.4, 0.003);
+        const l = surfacePoint(sdf, [0.25, 0.385, 0.03], [1, 0, 0.25], 0.4, 0.003), r = surfacePoint(sdf, [0.25, 0.385, -0.03], [1, 0, -0.25], 0.4, 0.003);
+        return [
+          { group: 'nose', region: 'nose', width: 0.011, points: [tip, ys] },
+          { group: 'nose', region: 'nose', width: 0.005, points: [ys, l] },
+          { group: 'nose', region: 'nose', width: 0.005, points: [ys, r] },
+        ];
+      },
+    },
+    physics: {
+      latticeSpacing: 0.058, substeps: 8,
+      shapeStiffness: [0.06, 0.45], volumeCompliance: [8e-8, 8e-10], inflate: [0.94, 1.06], grabCompliance: 0.005,
+      unitMeters: 0.25, fillGramsPerLitre: 30, shellGrams: 45,
+      stuffingAt(x, y, z) {
+        if (ears(x, y, z) < core(x, y, z)) return { density: 0.35, stiffness: 0.22 + 0.5 * smoothstep(0.85, 0.6, y) };
+        if (puff(x, y, z) < core(x, y, z)) return { density: 0.5, stiffness: 0.5 };
+        return { density: 1, stiffness: 1 };
+      },
+    },
+    locomotion: {
+      type: 'hop', groundY: 0, headX: 0.2, squash: 0.2, stretch: 0.12, crouchTime: 0.17, hopHeight: 0.3, hopDistance: 0.6,
+      cooldown: 0.25, turnGain: 16, turnDamp: 4, maxTurn: 20, uprightGain: 34, uprightDamp: 6, wallMargin: 0.7,
+    },
+    fur: {
+      shells: 14, length: 0.03, density: 200, droop: 0.12, combRadius: 0.08,
+      lagStiffness: 90, lagDamping: 0.3, inertia: 0.01, flow: 0.06,
+      direction(x, y, z) {
+        if (ears(x, y, z) < core(x, y, z)) return [0, 1, 0];
+        if (puff(x, y, z) < core(x, y, z)) return [x + 0.38, y - 0.28, z];
+        return [-1, -0.45, 0];
+      },
+    },
+    materials: {
+      regions: { body: { type: 'plush' }, belly: { type: 'plush', fur: 0.85 }, puff: { type: 'plush', fur: 1.7 },
+        earInner: { type: 'felt' }, eye: { type: 'glass' }, nose: { type: 'embroidery' } },
+      defaultPreset: 'oat',
+      presets: [
+        { id: 'oat', label: 'Oat', colors: { body: '#d2bc98', belly: '#f2e9d8', puff: '#f7f1e6', earInner: '#e7a7a4', eye: '#1b1410', nose: '#9c5560' } },
+        { id: 'cocoa', label: 'Cocoa', colors: { body: '#7b5741', belly: '#c8a98b', puff: '#eadccb', earInner: '#d99592', eye: '#140e0b', nose: '#4e2c28' } },
+        { id: 'snow', label: 'Snow', colors: { body: '#efebe4', belly: '#f8f6f1', puff: '#ffffff', earInner: '#f1b6b8', eye: '#22140f', nose: '#c46d79' } },
+      ],
+    },
+    behaviors: {
+      initial: 'sit',
+      states: {
+        sit: {
+          kind: 'autonomous', priority: 0, resumable: true, label: 'Sitting',
+          enter(ctx, d) { d.until = ctx.time + 1.5 + ctx.rand() * 2.5; },
+          resume(ctx, d) { d.until = ctx.time + 1 + ctx.rand() * 2; },
+          update(ctx, d) { ctx.intent.sniff = 0.3; if (ctx.flags.wander && ctx.time > d.until) return { next: ctx.rand() < 0.35 ? 'sniff' : 'hopAbout' }; },
+        },
+        hopAbout: {
+          kind: 'autonomous', priority: 1, label: 'Hopping about',
+          enter(ctx, d) { d.target = ctx.env.randomPoint(0.8, [0.1, 0.1]); },
+          update(ctx, d, dt, t) {
+            const c = ctx.body.c; ctx.intent.target = d.target; ctx.intent.hop = true;
+            if (Math.hypot(c[0] - d.target[0], c[2] - d.target[2]) < 0.35 || t > 7) return 'done';
+          },
+        },
+        sniff: { kind: 'autonomous', priority: 2, duration: 2.4, label: 'Sniffing', update(ctx) { ctx.intent.sniff = 1; ctx.intent.crouch = 0.2; } },
+        hop: {
+          kind: 'user', priority: 5, label: 'Hop',
+          enter(ctx, d) { const b = ctx.body; d.target = [b.c[0] + b.f[0] * 0.7, 0, b.c[2] + b.f[2] * 0.7]; },
+          update(ctx, d, dt, t) {
+            if (ctx.locomotion.airborne) d.launched = true;
+            ctx.intent.target = d.target; ctx.intent.hopNow = !d.launched;
+            if ((d.launched && !ctx.locomotion.airborne) || t > 2.5) return 'done';
+          },
+        },
+        binky: {
+          kind: 'user', priority: 6, label: 'Binky!',
+          update(ctx, d, dt, t) {
+            const I = ctx.intent;
+            if (ctx.locomotion.airborne) d.launched = true;
+            I.hopNow = !d.launched; I.hopScale = 1.7; I.twist = 1; I.expr.content = 0.6; I.turn = false;
+            if ((d.launched && !ctx.locomotion.airborne) || t > 2.5) return 'done';
+          },
+        },
+        startle: {
+          kind: 'reactive', priority: 7, label: 'Startled',
+          enter(ctx, d, info) {
+            const c = ctx.body.c, p = info?.point || c, a = v3.norm([c[0] - p[0] + 1e-3, 0, c[2] - p[2]]);
+            d.target = [c[0] + a[0] * 1.2, 0, c[2] + a[2] * 1.2];
+          },
+          update(ctx, d, dt, t) {
+            if (ctx.locomotion.airborne) d.launched = true;
+            ctx.intent.target = d.target; ctx.intent.hopNow = !d.launched; ctx.intent.hopScale = 1.2;
+            if ((d.launched && !ctx.locomotion.airborne) || t > 2) return 'done';
+          },
+        },
+        held: { kind: 'reactive', priority: 8, label: 'Dangling', update(ctx) { ctx.intent.turn = false; if (!ctx.interaction.grabbed) return 'done'; } },
+        groomed: {
+          kind: 'reactive', priority: 3, label: 'Melting into the brush',
+          enter(ctx, d) { d.until = ctx.time + 2.2; }, retrigger(ctx, d) { d.until = ctx.time + 2.2; },
+          update(ctx, d) { ctx.intent.crouch = 0.5; ctx.intent.expr.content = 1; if (ctx.time > d.until) return 'done'; },
+        },
+      },
+    },
+    interactions: {
+      tools: ['hand', 'finger', 'comb'], pickRadius: 0.03,
+      regions: [
+        { id: 'ears', label: 'Ears', test: (x, y) => y > 0.62 },
+        { id: 'head', label: 'Head', sphere: [0.27, 0.47, 0, 0.21] },
+        { id: 'tail', label: 'Tail puff', sphere: [-0.38, 0.28, 0, 0.12] },
+      ],
+      reactions: [
+        { on: 'grab', behavior: 'held' },
+        { on: 'poke', region: 'head', behavior: 'groomed' },
+        { on: 'poke', behavior: 'startle' },
+        { on: 'stroke', behavior: 'groomed' },
+        { on: 'comb', behavior: 'groomed' },
+      ],
+    },
+    actions: {
+      hop: { run: (ctx) => ctx.behaviors.request('hop') },
+      binky: { run: (ctx) => ctx.behaviors.request('binky') },
+      sniff: { run: (ctx) => ctx.behaviors.request('sniff') },
+    },
+    controls: [
+      { id: 'hop', type: 'button', label: 'Hop', action: 'hop', group: 'Actions', primary: true },
+      { id: 'binky', type: 'button', label: 'Binky', action: 'binky', group: 'Actions', hint: 'A joyful twisting leap' },
+      { id: 'sniff', type: 'button', label: 'Sniff', action: 'sniff', group: 'Actions' },
+      { id: 'smooth', type: 'button', label: 'Smooth fur', action: 'engine.smoothFur', group: 'Actions' },
+      { id: 'wander', type: 'toggle', label: 'Wander', bind: 'flags.wander', default: true, group: 'Behaviour' },
+      { id: 'stuffing', type: 'slider', label: 'Stuffing', bind: 'physics.stuffing', min: 0.3, max: 1.5, step: 0.01, default: 1, group: 'Body', format: (v) => `${Math.round(v * 100)}%` },
+      { id: 'pile', type: 'slider', label: 'Pile', bind: 'fur.pile', min: 0, max: 2, step: 0.01, default: 1, group: 'Body', format: (v) => `${(v * 0.03 * 250).toFixed(1)} mm` },
+      { id: 'hopHeight', type: 'slider', label: 'Hop height', bind: 'locomotion.hopHeight', min: 0.4, max: 1.8, step: 0.01, default: 1, group: 'Body', format: (v) => `${v.toFixed(2)}×` },
+      { id: 'fabric', type: 'preset', label: 'Fabric', bind: 'material.preset', default: 'oat', group: 'Fabric' },
+    ],
+    readouts: [
+      { id: 'mass', label: 'Mass', unit: 'g', get: (r) => r.metrics.mass, format: (v) => v.toFixed(0) },
+      { id: 'volume', label: 'Volume', unit: 'L', get: (r) => r.metrics.volume, format: (v) => v.toFixed(2) },
+      { id: 'hops', label: 'Hops', unit: '', get: (r) => r.locomotion.hops, format: (v) => String(v) },
+    ],
+    notes: {
+      anatomy: 'One blended SDF (body, haunches, head, cheeks, feet, puff tail, planar ears) with no attached parts and no joints.',
+      implemented: [
+        'Hop locomotion: crouch, ballistic launch under gravity, flight with stretch, and landing with floor friction.',
+        'The ears are lightly stuffed lattice cells, so they flop and bounce on their own. They are not animated.',
+        'A poke anywhere except the head startles it into a hop away; the comb, petting or a poke on the head make it relax.',
+      ],
+      approximations: [
+        'This prototype only checks that the architecture works. Its behaviour set and anatomy are intentionally small.',
+      ],
+    },
+  };
+})();
+
+/* Planned species: listed for the selector, never playable. */
+const PlannedCat = { id: 'cat', name: 'Plush Cat', category: 'Felid', status: 'planned', description: 'Walk, stretch, pounce and groom.' };
+const PlannedSongbird = { id: 'songbird', name: 'Plush Songbird', category: 'Passerine', status: 'planned', description: 'Fly, land, flap and preen.' };
+
+[PlushHammerhead, DustBunny, PlannedCat, PlannedSongbird].forEach((s) => Engine.registerSpecies(s));
+if (typeof module !== 'undefined') module.exports = { PlushHammerhead, DustBunny };
+
+</script>
+<!-- ===== APPLICATION ===== -->
+<script id="app-src">
+'use strict';
+/* =========================================================================
+   APPLICATION — UI generation from the active SpeciesDefinition, camera,
+   pointer/tool routing, fixed-step main loop, resize and cleanup.
+   ========================================================================= */
+(() => {
+const { v3, mat4, clamp, damp, lerp, hexToLinear } = Engine.math;
+const STEP = 1 / 60, MAX_STEPS = 3;
+const $ = (id) => document.getElementById(id);
+const el = (tag, attrs = {}, ...kids) => {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === 'class') e.className = v;
+    else if (k === 'text') e.textContent = v;
+    else if (k.startsWith('on')) e.addEventListener(k.slice(2), v);
+    else if (v !== undefined && v !== null && v !== false) e.setAttribute(k, v === true ? '' : v);
+  }
+  for (const kid of kids) if (kid !== null && kid !== undefined) e.append(kid);
+  return e;
+};
+
+/* Engine-global controls share the species control schema but bind to the app. */
+const GLOBAL_CONTROLS = [
+  { id: 'pause', type: 'button', label: (app) => (app.paused ? 'Resume' : 'Pause'), action: 'app.pause', group: 'Run', hint: 'Space' },
+  { id: 'reset', type: 'button', label: 'Reset', action: 'app.reset', group: 'Run', hint: 'R' },
+  { id: 'quarter', type: 'toggle', label: 'Quarter speed', bind: 'app.quarter', default: false, group: 'Options', hint: 'Run the simulation at 0.25×' },
+  { id: 'mesh', type: 'toggle', label: 'Mesh', bind: 'app.debugMesh', default: false, group: 'Options', hint: 'Overlay the XPBD lattice' },
+];
+
+const LIGHTS = {
+  key: v3.norm([-0.5, 0.86, 0.42]), keyColor: [1.0, 0.94, 0.86],
+  fill: v3.norm([0.7, 0.25, -0.45]), fillColor: [0.2, 0.22, 0.27],
+  sky: [0.4, 0.41, 0.43], ground: [0.2, 0.18, 0.16],
+};
+
+const ENGINE_NOTES = {
+  implemented: [
+    'XPBD soft body: every hex cell is shape-matched (Müller rotation extraction, warm-started, mass-weighted so momentum is conserved) and split into five tetrahedra with volume constraints. Stuffing scales compliance, inflation and mass.',
+    'The lattice is built from the species SDF so that it covers every render vertex. A surface-nets mesh is embedded in it and skinned on the GPU by trilinear FFD, and normals use the cofactor of the local deformation gradient.',
+    'Rigid parts attach to the lattice frame at an anchor (polar decomposition of the local deformation gradient) and can hang off an optional 1-DoF damped joint.',
+    'Fur uses alpha-to-coverage shells (4× MSAA) with procedural tapered strands. The pile lags on a spring driven by particle acceleration and drag, and a per-vertex comb field and minky nap shading show where it was brushed.',
+    'Behaviour runs as a prioritised state machine with autonomous, user, reactive and environment states, preemption, a resume stack and retrigger hooks. Reactions are data rules: event + region → state.',
+    'Steps are deterministic: fixed 60 Hz steps with 8 substeps, a seeded RNG and a fixed constraint order. Variable frame rates run up to 3 steps per frame and drop any remaining backlog.',
+  ],
+  approximations: [
+    'Locomotion is hybrid: muscles pose the lattice rest shape (physical), while steering, pitch and roll are PD torques applied as body-wide velocity changes.',
+    'Collisions are only against the environment box. There is no self-collision and no creature–item contact; feeding uses a scripted suction radius.',
+    'Picking ray-tests CPU-skinned render vertices, not triangles.',
+    'Shadows come from one directional shadow map, and fur shells do not cast shadows.',
+  ],
+  limitations: [
+    'The solver runs single-threaded in JavaScript on the main thread (~4–6 ms per step). The GPU only skins and renders.',
+    'Without WebGPU nothing is rendered. There is no WebGL fallback.',
+  ],
+};
+
+/* ---------- Orbit camera ------------------------------------------------- */
+class OrbitCamera {
+  constructor() { this.yaw = 0.6; this.pitch = 0.3; this.dist = 6; this.target = [0, 1, 0]; this.base = [0, 1, 0]; this.follow = 0.5; this.fov = (30 * Math.PI) / 180; }
+  configure(cfg) {
+    Object.assign(this, { yaw: cfg.yaw, pitch: cfg.pitch, dist: cfg.distance, follow: cfg.follow ?? 0.5 });
+    this.base = cfg.target.slice(); this.target = cfg.target.slice(); this.home = { ...cfg };
+  }
+  update(dt, focus) {
+    const want = v3.lerp(this.base, focus, this.follow);
+    this.target = v3.lerp(this.target, want, damp(1.8, dt));
+  }
+  eye(aspect) {
+    const d = this.dist * Math.pow(Math.max(1, 1.25 / aspect), 0.75), cp = Math.cos(this.pitch);
+    return [this.target[0] + d * cp * Math.sin(this.yaw), this.target[1] + d * Math.sin(this.pitch), this.target[2] + d * cp * Math.cos(this.yaw)];
+  }
+  matrices(aspect) {
+    const eye = this.eye(aspect);
+    const vp = mat4.mul(mat4.perspective(this.fov, aspect, 0.05, 80), mat4.lookAt(eye, this.target, [0, 1, 0]));
+    this.cache = { eye, viewProj: vp, inv: mat4.invert(vp), aspect };
+    return this.cache;
+  }
+  ray(nx, ny) {
+    const { inv, eye } = this.cache, a = mat4.xform(inv, [nx, ny, 0]), b = mat4.xform(inv, [nx, ny, 1]);
+    return { o: a, d: v3.norm(v3.sub(b, a)), view: v3.norm(v3.sub(this.target, eye)) };
+  }
+}
+
+/* ---------- Control renderer (shared by species + global controls) ------- */
+function renderControls(container, controls, B) {
+  container.textContent = '';
+  const live = [], groups = [];
+  for (const c of controls) {
+    let g = groups.find((x) => x.name === (c.group || ''));
+    if (!g) groups.push((g = { name: c.group || '', items: [] }));
+    g.items.push(c);
+  }
+  for (const g of groups) {
+    const wrap = el('div', { class: 'group' });
+    if (g.name) wrap.append(el('div', { class: 'group-label', text: g.name }));
+    const buttons = g.items.filter((c) => c.type === 'button');
+    let grid = null;
+    if (buttons.length) {
+      grid = el('div', { class: 'btn-grid' });
+      wrap.append(grid);
+    }
+    for (const c of g.items) {
+      const label = () => (typeof c.label === 'function' ? c.label(B.labelCtx()) : c.label);
+      if (c.type === 'button') {
+        const b = el('button', { class: 'btn' + (c.primary ? ' primary' : ''), type: 'button', title: c.hint || null, 'data-id': c.id, text: label() });
+        const i = buttons.indexOf(c), rem = buttons.length % 3;
+        if (i === buttons.length - 1 && rem === 1) b.classList.add('wide');
+        if (i === buttons.length - 1 && rem === 2) b.style.gridColumn = 'span 2';
+        b.addEventListener('click', () => { B.run(c); b.classList.remove('flash'); void b.offsetWidth; b.classList.add('flash'); });
+        grid.append(b);
+        live.push(() => { b.textContent = label(); b.disabled = !B.enabled(c); });
+      } else if (c.type === 'toggle') {
+        const sw = el('button', { class: 'switch', type: 'button', role: 'switch', 'aria-checked': String(!!B.get(c.bind)), 'aria-label': label() });
+        sw.addEventListener('click', () => { const v = !B.get(c.bind); B.set(c.bind, v); sw.setAttribute('aria-checked', String(v)); });
+        wrap.append(el('div', { class: 'toggle-row' }, el('span', { class: 'lbl' }, label(), c.hint ? el('span', { class: 'sub', text: c.hint }) : null), sw));
+        live.push(() => { sw.setAttribute('aria-checked', String(!!B.get(c.bind))); sw.disabled = !B.enabled(c); });
+      } else if (c.type === 'slider') {
+        const id = `ctl-${B.prefix}-${c.id}`, v0 = B.get(c.bind) ?? c.default;
+        const out = el('output', { for: id });
+        const input = el('input', { type: 'range', id, min: c.min, max: c.max, step: c.step || 0.01, value: v0 });
+        const paint = (v) => { out.textContent = c.format ? c.format(+v) : (+v).toFixed(2); input.style.setProperty('--p', `${((v - c.min) / (c.max - c.min)) * 100}%`); };
+        input.addEventListener('input', () => { B.set(c.bind, +input.value); paint(input.value); });
+        paint(v0);
+        wrap.append(el('div', { class: 'slider' }, el('div', { class: 'row' }, el('label', { for: id, text: label() }), out), input));
+        live.push(() => { input.disabled = !B.enabled(c); });
+      } else if (c.type === 'select') {
+        const s = el('select', { class: 'sel', 'aria-label': label() }, ...c.options.map((o) => el('option', { value: o.value, text: o.label })));
+        s.value = B.get(c.bind) ?? c.default;
+        s.addEventListener('change', () => B.set(c.bind, s.value));
+        wrap.append(s);
+      } else if (c.type === 'preset') {
+        const row = el('div', { class: 'swatches', role: 'radiogroup', 'aria-label': label() });
+        const opts = B.presets(c), cur = () => B.get(c.bind) ?? c.default;
+        const btns = opts.map((o) => {
+          const b = el('button', { class: 'swatch', type: 'button', role: 'radio', 'aria-checked': String(cur() === o.id) },
+            el('span', { class: 'chip', style: `background: linear-gradient(180deg, ${o.colors[0]} 0 56%, ${o.colors[1]} 56% 100%)` }), o.label);
+          b.addEventListener('click', () => { B.set(c.bind, o.id); btns.forEach((x, i) => x.setAttribute('aria-checked', String(opts[i].id === o.id))); });
+          return b;
+        });
+        row.append(...btns);
+        wrap.append(row);
+      }
+    }
+    container.append(wrap);
+  }
+  return () => live.forEach((f) => f());
+}
+
+/* ---------- Application -------------------------------------------------- */
+class App {
+  constructor() {
+    this.canvas = $('gpu');
+    this.paused = false; this.quarter = false; this.debugMesh = false;
+    this.toolId = 'hand'; this.assets = new Map();
+    this.creature = null; this.def = null; this.renderer = null;
+    this.camera = new OrbitCamera();
+    this.acc = 0; this.last = performance.now(); this.stepMs = 0; this.uiClock = 0;
+    this.pointers = new Map(); this.mode = null; this.hover = null; this.toolHintUntil = 0;
+    this.purity = this.scanEngineSource();
+  }
+  async start() {
+    this.buildSpeciesList();
+    this.refreshGlobal = renderControls($('globalControls'), GLOBAL_CONTROLS, this.globalBinding());
+    try {
+      this.renderer = await Engine.Renderer.create(this.canvas);
+      this.renderer.device.lost.then((info) => { if (info.reason !== 'destroyed') this.fail(new Error(`The GPU device was lost (${info.message || info.reason}).`)); });
+    } catch (err) { this.fail(err); }
+    const first = Engine.registry.find((s) => s.status === 'complete' && s.validation.ok);
+    await this.loadSpecies(first.id);
+    this.bindInput();
+    new ResizeObserver(() => (this.needsResize = true)).observe($('viewport'));
+    this.needsResize = true;
+    addEventListener('pagehide', () => this.renderer?.destroy());
+    requestAnimationFrame((t) => this.frame(t));
+  }
+  fail(err) {
+    console.error(err);
+    const box = $('fallback'), webgpu = err instanceof Engine.GPUUnavailable;
+    box.hidden = false;
+    box.innerHTML = '';
+    box.append(el('div', { class: 'box' },
+      el('h3', { text: webgpu ? 'WebGPU isn’t available here' : 'The renderer stopped' }),
+      el('p', { text: err.message }),
+      el('p', { text: webgpu
+        ? 'Plush Creatures needs WebGPU for GPU skinning, fur shells and shadows. Try a current Chrome or Edge, Safari 18 or later, or Firefox with WebGPU enabled, on a device with hardware acceleration turned on.'
+        : 'Reload the page to try again. If it keeps happening, the browser may have blocked the GPU for this tab.' }),
+      el('p', { text: 'The species definitions, controls and technical notes on this page are still generated from the engine, but the simulation will not run without a renderer.' })));
+    this.renderer = null;
+    $('stateLabel').textContent = 'Renderer unavailable';
+  }
+  /* ---- species lifecycle */
+  buildSpeciesList() {
+    const list = $('speciesList');
+    list.textContent = '';
+    for (const s of Engine.registry) {
+      const playable = s.status !== 'planned' && s.validation.ok;
+      const chip = { complete: 'Complete', prototype: 'Prototype', planned: 'Planned' }[s.status] || s.status;
+      const b = el('button', { class: 'species-opt', type: 'button', role: 'radio', 'aria-checked': 'false', 'data-id': s.id, disabled: !playable,
+        title: playable ? s.description : `${s.description} — not implemented yet` },
+        el('span', { class: 'nm', text: s.name }), el('span', { class: 'ct', text: playable ? s.category : `${s.category} · not playable` }),
+        el('span', { class: `chip ${s.status}`, text: chip }));
+      if (playable) b.addEventListener('click', () => this.loadSpecies(s.id));
+      list.append(b);
+    }
+  }
+  async loadSpecies(id) {
+    const def = Engine.registry.find((s) => s.id === id);
+    if (!def || def.status === 'planned' || (this.def && this.def.id === id)) return;
+    const ov = $('overlay');
+    ov.textContent = `Sewing the ${def.name}…`; ov.hidden = false;
+    await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 30)));
+    this.endInteraction();
+    let assets = this.assets.get(id);
+    if (!assets) { assets = Engine.buildCreatureAssets(def); this.assets.set(id, assets); }
+    this.def = def;
+    this.creature = new Engine.Creature(def, assets, { seed: 7 });
+    this.materialPreset = null;
+    this.renderer?.setCreature(this.creature);
+    this.camera.configure(def.environment.camera);
+    const tools = this.toolsFor(def);
+    if (!tools.includes(this.toolId)) this.toolId = tools[0];
+    this.buildSpeciesUI();
+    this.acc = 0;
+    ov.hidden = true;
+  }
+  toolsFor(def) { return def.interactions.tools.filter((t) => Engine.TOOLS[t] && (Engine.TOOLS[t].requires !== 'fur' || def.fur)); }
+  buildSpeciesUI() {
+    const def = this.def, D = def.display;
+    document.title = `${def.name} — Plush Creatures`;
+    document.documentElement.style.setProperty('--accent', D.theme?.accent || '#8a5a33');
+    $('kicker').textContent = D.kicker;
+    $('title').querySelector('.l1').textContent = D.title[0];
+    $('title').querySelector('.l2').textContent = D.title[1];
+    $('lede').textContent = D.description;
+    $('speciesName').textContent = def.name;
+    $('meta').textContent = `WebGPU · XPBD · ${Engine.ENVIRONMENTS[def.environment.preset].label}`;
+    for (const b of $('speciesList').children) b.setAttribute('aria-checked', String(b.dataset.id === def.id));
+    // tools
+    const tools = $('tools');
+    tools.textContent = '';
+    for (const t of this.toolsFor(def)) {
+      const T = Engine.TOOLS[t];
+      const b = el('button', { class: 'tool', type: 'button', role: 'radio', 'aria-checked': String(t === this.toolId), title: T.hint },
+        el('span', { class: 'g', 'aria-hidden': 'true', text: T.glyph }), T.label);
+      b.addEventListener('click', () => this.setTool(t));
+      tools.append(b);
+    }
+    this.toolHintUntil = performance.now() + 6000;
+    // controls
+    this.refreshSpecies = renderControls($('speciesControls'), def.controls, this.speciesBinding());
+    // readouts
+    const ro = $('readouts');
+    ro.textContent = '';
+    this.readoutEls = def.readouts.map((r) => {
+      const dd = el('dd', {}, el('span', { text: '—' }), r.unit ? el('small', { text: r.unit }) : null);
+      ro.append(el('div', { class: 'readout' }, el('dt', { text: r.label }), dd));
+      return { r, span: dd.firstChild };
+    });
+    this.buildNotes();
+    this.refreshUI();
+  }
+  setTool(t) {
+    this.toolId = t;
+    for (const b of $('tools').children) b.setAttribute('aria-checked', String(b.textContent.includes(Engine.TOOLS[t].label)));
+    this.toolHintUntil = performance.now() + 5000;
+  }
+  /* ---- bindings */
+  speciesBinding() {
+    const app = this, def = this.def, regs = Object.keys(def.materials.regions);
+    return {
+      prefix: def.id,
+      labelCtx: () => app.creature.ctx,
+      run: (c) => app.runAction(c.action),
+      enabled: (c) => app.actionEnabled(c),
+      get: (bind) => app.creature.getParam(bind),
+      set: (bind, v) => app.creature.setParam(bind, v),
+      presets: () => def.materials.presets.map((p) => ({ id: p.id, label: p.label, colors: (def.materials.swatch || regs.slice(0, 2)).map((r) => p.colors[r]) })),
+    };
+  }
+  globalBinding() {
+    const app = this;
+    return {
+      prefix: 'global', labelCtx: () => app, enabled: () => true,
+      run: (c) => app.runAction(c.action),
+      get: (bind) => app[bind.split('.')[1]],
+      set: (bind, v) => { app[bind.split('.')[1]] = v; },
+    };
+  }
+  runAction(id) {
+    const c = this.creature;
+    if (id === 'app.pause') { this.paused = !this.paused; this.last = performance.now(); }
+    else if (id === 'app.reset') { if (c) { this.endInteraction(); c.reset(); this.camera.configure(this.def.environment.camera); } }
+    else if (!c) return;
+    else if (Engine.ENGINE_ACTIONS[id]) Engine.ENGINE_ACTIONS[id].run(c);
+    else if (this.def.actions[id]) this.def.actions[id].run(c.ctx);
+    this.refreshUI();
+  }
+  actionEnabled(control) {
+    const c = this.creature;
+    if (!c || !this.renderer) return false;
+    if (control.enabled && !control.enabled(c.ctx)) return false;
+    const a = this.def.actions?.[control.action];
+    return !(a && a.enabled && !a.enabled(c.ctx));
+  }
+  /* ---- notes */
+  buildNotes() {
+    const def = this.def, A = this.creature.assets, body = $('notesBody');
+    body.textContent = '';
+    const list = (items, tag, cls) => el('ul', {}, ...items.map((t) => el('li', {}, el('span', { class: `tag ${cls}`, text: tag }), t)));
+    body.append(
+      el('h3', { text: `${def.name} — anatomy` }), el('p', { text: def.notes.anatomy }),
+      el('p', { class: 'kv', text: `${A.vertexCount.toLocaleString()} vertices · ${A.triangles.toLocaleString()} triangles · ${A.lattice.n} particles · ${A.lattice.nc} hexes · ${A.lattice.tets.length / 4} tets · ${A.decalCount} stitch segments · built in ${A.buildMs.toFixed(0)} ms` }),
+      el('h3', { text: 'Species behaviour' }), list(def.notes.implemented, 'Implemented', 'ok'), list(def.notes.approximations, 'Approx.', 'approx'),
+      el('h3', { text: 'Engine' }), list(ENGINE_NOTES.implemented, 'Implemented', 'ok'), list(ENGINE_NOTES.approximations, 'Approx.', 'approx'), list(ENGINE_NOTES.limitations, 'Limit', 'limit'),
+      el('h3', { text: 'Architecture checks' }),
+      el('ul', {}, ...Engine.registry.map((s) => el('li', {}, el('span', { class: `tag ${s.validation.ok ? 'ok' : 'limit'}`, text: s.validation.ok ? 'Valid' : 'Invalid' }),
+        `${s.name}: ${s.validation.planned ? 'planned, identity only (not playable)' : `${s.validation.checks} definition checks passed against engine capabilities`}${s.validation.errors.length ? ' — ' + s.validation.errors.join('; ') : ''}`)),
+        el('li', {}, el('span', { class: `tag ${this.purity.hits.length ? 'limit' : 'ok'}`, text: this.purity.hits.length ? 'Leak' : 'Clean' }),
+          this.purity.scanned ? `Engine source scanned for ${this.purity.terms.length} species-specific identifiers (${this.purity.terms.join(', ')}): ${this.purity.hits.length ? 'found ' + this.purity.hits.join(', ') : 'none found'}.` : 'Engine source scan unavailable.')),
+    );
+  }
+  scanEngineSource() {
+    const src = (document.getElementById('engine-src')?.textContent || '').replace(/\/\*[\s\S]*?\*\//g, '');
+    const terms = new Set();
+    for (const s of Engine.registry) {
+      terms.add(s.id);
+      s.name.split(/\s+/).forEach((w) => { if (w.length > 2 && w.toLowerCase() !== 'plush') terms.add(w.toLowerCase()); });
+      (s.anatomy?.parts || []).forEach((p) => { if (p.attach) terms.add(p.id.toLowerCase()); });
+      Object.keys(s.anatomy?.joints || {}).forEach((j) => terms.add(j.toLowerCase()));
+      Object.keys(s.items || {}).forEach((i) => terms.add(i.toLowerCase()));
+    }
+    const esc = (t) => t.replace(/[.*+?^${}()|[\]\\-]/g, '\\$&');
+    const hits = [...terms].filter((t) => new RegExp(`\\b${esc(t)}\\b`, 'i').test(src));
+    return { scanned: src.length > 0, terms: [...terms], hits };
+  }
+  /* ---- input */
+  bindInput() {
+    const cv = this.canvas;
+    const ndc = (e) => { const r = cv.getBoundingClientRect(); return [((e.clientX - r.left) / r.width) * 2 - 1, 1 - ((e.clientY - r.top) / r.height) * 2]; };
+    const pick = (e) => {
+      if (!this.creature || !this.camera.cache) return { hit: null, ray: null };
+      const [x, y] = ndc(e), ray = this.camera.ray(x, y);
+      return { ray, hit: this.creature.raycast(ray.o, ray.d) };
+    };
+    cv.addEventListener('pointerdown', (e) => {
+      if (!this.renderer) return;
+      cv.setPointerCapture(e.pointerId);
+      this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (this.pointers.size === 2) { this.endInteraction(); this.mode = 'pinch'; this.pinch = this.pinchDist(); return; }
+      const { hit, ray } = pick(e), tool = Engine.TOOLS[this.toolId];
+      if (hit && tool.begin(this.creature, hit, ray)) { this.mode = 'tool'; this.toolHintUntil = 0; }
+      else this.mode = 'orbit';
+      cv.classList.add('dragging');
+    });
+    cv.addEventListener('pointermove', (e) => {
+      const prev = this.pointers.get(e.pointerId);
+      if (!prev) { this.hoverAt(e, pick); return; }
+      const dx = e.clientX - prev.x, dy = e.clientY - prev.y;
+      this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (this.mode === 'pinch' && this.pointers.size === 2) {
+        const d = this.pinchDist();
+        this.camera.dist = clamp(this.camera.dist * (this.pinch / d), 2, 16); this.pinch = d;
+      } else if (this.mode === 'orbit') {
+        this.camera.yaw -= dx * 0.006; this.camera.pitch = clamp(this.camera.pitch + dy * 0.005, 0.04, 1.35);
+      } else if (this.mode === 'tool') {
+        const { hit, ray } = pick(e);
+        Engine.TOOLS[this.toolId].move(this.creature, hit, ray);
+      }
+    });
+    const up = (e) => {
+      if (!this.pointers.has(e.pointerId)) return;
+      this.pointers.delete(e.pointerId);
+      if (this.mode === 'tool') this.endInteraction();
+      if (this.pointers.size === 0) { this.mode = null; cv.classList.remove('dragging'); }
+    };
+    cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
+    cv.addEventListener('pointerleave', () => { if (!this.pointers.size) { this.hover = null; cv.classList.remove('on-creature'); } });
+    cv.addEventListener('wheel', (e) => { e.preventDefault(); this.camera.dist = clamp(this.camera.dist * Math.exp(e.deltaY * 0.0012), 2, 16); }, { passive: false });
+    cv.addEventListener('contextmenu', (e) => e.preventDefault());
+    addEventListener('keydown', (e) => {
+      if (e.target.closest && e.target.closest('input, select, textarea')) return;
+      if (e.key === ' ' && !(e.target instanceof HTMLButtonElement)) { e.preventDefault(); this.runAction('app.pause'); }
+      else if (e.key === 'r' || e.key === 'R') this.runAction('app.reset');
+      else if (/^[1-9]$/.test(e.key)) { const t = this.toolsFor(this.def)[+e.key - 1]; if (t) this.setTool(t); }
+    });
+  }
+  pinchDist() { const p = [...this.pointers.values()]; return Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y) || 1; }
+  hoverAt(e, pick) {
+    if (e.pointerType !== 'mouse' || performance.now() - (this.hoverT || 0) < 70) return;
+    this.hoverT = performance.now();
+    const { hit } = pick(e);
+    this.hover = hit;
+    this.canvas.classList.toggle('on-creature', !!hit);
+  }
+  endInteraction() {
+    if (this.mode === 'tool' && this.creature) Engine.TOOLS[this.toolId].end(this.creature);
+    if (this.mode === 'tool') this.mode = null;
+  }
+  /* ---- loop */
+  frame(now) {
+    requestAnimationFrame((t) => this.frame(t));
+    const dt = Math.min((now - this.last) / 1000, 0.1);
+    this.last = now;
+    const c = this.creature;
+    if (c && this.renderer && !this.paused) {
+      this.acc += dt * (this.quarter ? 0.25 : 1);
+      let n = 0;
+      const t0 = performance.now();
+      while (this.acc >= STEP && n < MAX_STEPS) { c.step(STEP); this.acc -= STEP; n++; }
+      if (this.acc >= STEP) this.acc = 0;
+      if (n) this.stepMs = lerp(this.stepMs || (performance.now() - t0) / n, (performance.now() - t0) / n, 0.08);
+    }
+    this.uiClock += dt;
+    if (this.uiClock > 0.15) { this.uiClock = 0; this.refreshUI(); }
+    if (!this.renderer || !c) return;
+    if (this.needsResize) this.resize();
+    this.camera.update(dt, c.sim.frame.c);
+    this.renderer.render(this.frameState());
+  }
+  resize() {
+    this.needsResize = false;
+    const r = this.canvas.getBoundingClientRect(), dpr = Math.min(devicePixelRatio || 1, 2);
+    let w = Math.max(1, Math.round(r.width * dpr)), h = Math.max(1, Math.round(r.height * dpr));
+    const max = 2.6e6;
+    if (w * h > max) { const s = Math.sqrt(max / (w * h)); w = Math.round(w * s); h = Math.round(h * s); }
+    const lim = this.renderer.device.limits.maxTextureDimension2D;
+    this.renderer.resize(Math.min(w, lim), Math.min(h, lim));
+  }
+  frameState() {
+    const c = this.creature, def = this.def, env = c.env.cfg, b = c.env.bounds, [w, h] = this.renderer.size;
+    const cam = this.camera.matrices(w / h);
+    if (this.materialPreset !== c.presetId) { this.materialTable = Engine.buildMaterialTable(def, c.presetId); this.materialPreset = c.presetId; }
+    const center = [(b.min[0] + b.max[0]) / 2, b.min[1], (b.min[2] + b.max[2]) / 2];
+    const lightView = mat4.lookAt(v3.add(center, v3.scale(LIGHTS.key, 14)), center, [0, 1, 0]);
+    const lightViewProj = mat4.mul(mat4.ortho(-6, 6, -6, 6, 1, 30), lightView);
+    const bg = env.background, bgLin = hexToLinear(bg), bgS = [1, 3, 5].map((i) => parseInt(bg.slice(i, i + 2), 16) / 255);
+    const fur = def.fur && c.fur ? [def.fur.length * c.fur.pile, c.fur.pile > 0.02 ? def.fur.shells : 0, def.fur.density, def.fur.droop] : [0, 0, 0, 0];
+    return {
+      viewProj: cam.viewProj, lightViewProj, eye: cam.eye, time: c.env.time,
+      keyDir: LIGHTS.key, shadowStrength: 0.85, keyColor: LIGHTS.keyColor, fillDir: LIGHTS.fill, fillColor: LIGHTS.fillColor,
+      skyColor: LIGHTS.sky, groundColor: LIGHTS.ground, bgColor: bgLin, bgClear: bgS, floorColor: hexToLinear(env.floor),
+      fur, env: [b.min[1], env.floorPattern === 'caustics' ? 1 : 0, env.fadeRadius, 0], bounds: [b.min[0], b.min[2], b.max[0], b.max[2]],
+      materials: this.materialTable, creature: c, debugMesh: this.debugMesh,
+      items: c.env.items.map((it) => ({ type: it.type, matrix: c.env.itemMatrix(it) })),
+    };
+  }
+  refreshUI() {
+    const c = this.creature;
+    this.refreshGlobal?.();
+    if (!c) return;
+    this.refreshSpecies?.();
+    c.updateMetrics();
+    const rctx = { metrics: c.metrics, locomotion: c.loco.readouts, state: c.state };
+    for (const { r, span } of this.readoutEls || []) {
+      const v = r.get(rctx);
+      span.textContent = r.format ? r.format(v) : String(v);
+    }
+    const st = $('status');
+    st.classList.toggle('paused', this.paused);
+    $('stateLabel').textContent = !this.renderer ? 'Renderer unavailable' : this.paused ? 'Paused' : c.machine.label() + (this.quarter ? ' · ¼×' : '');
+    const A = c.assets, sh = def => (def.fur && c.fur.pile > 0.02 ? def.fur.shells : 0);
+    $('engineLine').textContent = `lattice ${A.lattice.n} particles · ${A.lattice.nc} hexes · ${A.lattice.tets.length / 4} tets · ${(A.triangles / 1000).toFixed(1)}k triangles × ${1 + sh(this.def)} layers · ${this.stepMs.toFixed(1)} ms / step`;
+    const hint = $('hint'), T = Engine.TOOLS[this.toolId];
+    if (this.hover && this.hover.regions.length && !this.mode) {
+      const labels = this.def.interactions.regions.filter((r) => this.hover.regions.includes(r.id)).map((r) => r.label);
+      hint.textContent = `${labels[0]} · ${T.label}`;
+    } else hint.textContent = performance.now() < this.toolHintUntil ? T.hint : '';
+  }
+}
+
+const app = new App();
+window.plushApp = app;
+app.start().catch((err) => app.fail(err));
+})();
+
+</script>
+</body>
+</html>
